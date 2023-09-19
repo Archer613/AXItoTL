@@ -1,0 +1,8 @@
+.bsp/
+out/
+.idea/
+.idea_modules/
+build/
+.metals/
+.vscode/
+.bloop/
