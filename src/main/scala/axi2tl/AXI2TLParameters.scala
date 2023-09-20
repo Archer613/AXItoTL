@@ -19,6 +19,9 @@ case class AXI2TLParam(
   echoField: Seq[BundleFieldBase] = Nil,
   reqField: Seq[BundleFieldBase] = Nil,
 
+  readEntriesSize: Int = 16,
+  writeEntriesSize: Int = 16,
+
   ridBits: Int = 5,
   aridBits: Int = 14,
   entrydatabits: Int = 256,
