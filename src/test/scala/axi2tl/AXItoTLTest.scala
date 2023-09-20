@@ -31,8 +31,18 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   )))
 
   val xbar = TLXbar()
+  val tlnode = TLManagerNode(Seq(TLSlavePortParameters.v1(Seq(TLManagerParameters(
+    address = Seq(AddressSet(
+      0x00000000L, 0xfffffffffL
+    )),
+    resources = device.reg,
+    supportsGet = TransferSizes(1, 32),
+    supportsPutFull = TransferSizes(1, 32),
+    supportsPutPartial = TransferSizes(1, 32)
+    ,
+    fifoId = Some(0))), 8)))
   val ram = LazyModule(new TLRAM(AddressSet(0, 0xffffL), beatBytes = 32))
-  ram.node :=
+  tlnode :=
     TLXbar() :=*
       TLFragmenter(32, 64) :=*
       TLCacheCork() :=*
@@ -41,7 +51,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
 
   val axi2tlParams = p(AXI2TLParamKey)
   val AXItoTL = LazyModule(new AXItoTL)
-
+ 
   xbar :=
     TLFIFOFixer() :=
     TLWidthWidget(32) :=
@@ -59,7 +69,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   val master_nodes = l3FrontendAXI4Node
   lazy val module = new LazyModuleImp(this){
     master_nodes.makeIOs()(ValName(s"master_port_"))
-    
+    tlnode.makeIOs()(ValName(s"l3_port_"))
   }
 
 }

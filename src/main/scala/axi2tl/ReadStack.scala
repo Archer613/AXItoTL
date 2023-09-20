@@ -43,7 +43,7 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
   io.in.b.bits.id := DontCare
   io.in.b.valid := false.B
   io.in.w.ready := false.B
-  io.in.aw.ready := false.Bgi
+  io.in.aw.ready := false.B
 
   def mask(address: UInt, lgSize: UInt): UInt = {
     MaskGen(address, lgSize, axi2tlParams.beatBytes)
