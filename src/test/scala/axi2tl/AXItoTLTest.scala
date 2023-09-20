@@ -22,7 +22,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   val delayFactor = 0.5
 
   val idBits = 14
-
+  val device = new SimpleDevice("my-device", Seq("tutorial,my-device0"))
   val l3FrontendAXI4Node = AXI4MasterNode(Seq(AXI4MasterPortParameters(
     Seq(AXI4MasterParameters(
       name = "dma",
@@ -41,7 +41,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
     supportsPutPartial = TransferSizes(1, 32)
     ,
     fifoId = Some(0))), 8)))
-  val ram = LazyModule(new TLRAM(AddressSet(0, 0xffffL), beatBytes = 32))
+  // val ram = LazyModule(new TLRAM(AddressSet(0, 0xffffL), beatBytes = 32))
   tlnode :=
     TLXbar() :=*
       TLFragmenter(32, 64) :=*
