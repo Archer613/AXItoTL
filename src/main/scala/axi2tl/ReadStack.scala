@@ -9,11 +9,11 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.tilelink.TLMessages._
 import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.amba.axi4.{AXI4BundleAR, _}
-import utility._
+//import utility._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.MaskGen
+import xs.utils.sram.SRAMTemplate
 
-//import xs.utils.sram._
 class readEntry(implicit p:Parameters) extends AXItoTLBundle{
   val rvalid = Bool()
   val rready = Bool()

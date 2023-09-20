@@ -46,11 +46,11 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
     print_bundle_fields(node.in.head._2.bundle.requestFields, "usr")
     print_bundle_fields(node.in.head._2.bundle.echoFields, "echo")
 
-    val readStack = Module(new ReadStack(entries = 8)(p.alterPartial {
+    val readStack = Module(new ReadStack(entries = axi2tlParams.readEntriesSize)(p.alterPartial {
         case EdgeInKey => node.in.head._2
         case EdgeOutKey => node.out.head._2
       }))
-    val writeStack = Module(new WriteStack(entries = 8)(p.alterPartial {
+    val writeStack = Module(new WriteStack(entries = axi2tlParams.writeEntriesSize)(p.alterPartial {
       case EdgeInKey => node.in.head._2
       case EdgeOutKey => node.out.head._2
     }))
