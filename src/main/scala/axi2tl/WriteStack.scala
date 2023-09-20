@@ -9,9 +9,10 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.tilelink.TLMessages._
 import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.amba.axi4._
-import utility._
+//import utility._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.MaskGen
+import xs.utils.sram.SRAMTemplate
 
 
 class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
