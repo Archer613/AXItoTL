@@ -59,6 +59,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   val master_nodes = l3FrontendAXI4Node
   lazy val module = new LazyModuleImp(this){
     master_nodes.makeIOs()(ValName(s"master_port_"))
+    
   }
 
 }

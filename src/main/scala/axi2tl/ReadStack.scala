@@ -38,7 +38,7 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
     val out = TLBundle(edgeOut.bundle)
   })
 
-  // TODO: not fully initialized
+  // readStack ignore aw,w,b channel
   io.in.b.bits.resp := DontCare
   io.in.b.bits.id := DontCare
   io.in.b.valid := false.B
@@ -48,19 +48,7 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
   def mask(address: UInt, lgSize: UInt): UInt = {
     MaskGen(address, lgSize, axi2tlParams.beatBytes)
   }
-//  def isFisrtAXI(arId: UInt,rs:Vec[readEntry]):Bool = !Cat(rs.map(
-//    m =>
-//    m.rvalid && m.readStatus === waitSend && m.arid === arId
-//  )).orR
-//  def LastIdx(arId:UInt,rs:Vec[readEntry]): Unit = {
-//    rs.zipWithIndex.collectFirst {
-//      case(value,index)
-//            if (value.rvalid && value.readStatus === waitSend && value.arid === arId)
-//      => index
-//    }.getOrElse(-1.U)
-//  }
-//  def countBeat(arId:UInt,rs:Vec[readEntry]):UInt = (rs.map(e => Mux(e.rvalid && e.arid === arId,true.B,false.B))).reduce(_ +& _)
-//
+
 
   def countBeat(arId: UInt, rs: Vec[readEntry]): UInt = {
     rs.count(e => e.rvalid && e.arid === arId)
@@ -68,7 +56,8 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
 
   /*
      Data Structure:
-       readStack: 32 entrires
+       readStack: store  contrl imformation
+       readDataStack : store r_data
    */
   val readStack = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new readEntry))))
   val readDataStack = Module(new SRAMTemplate(
@@ -81,18 +70,19 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
   val axireqArb = Module(new Arbiter(new readEntry,entries))
   val axirespArb = Module(new Arbiter(new readEntry,entries))
 
-  //flags
+
+  /* ======== Receive Ar Req and Alloc======== */
+  /*
+    when ar is fire and readStack is not full,
+    alloc a entry in readStack and readDataStack.
+  */
   val empty = Cat(readStack.map(e => !e.rvalid && e.readStatus === idel)).orR
   val alloc = empty && io.in.ar.valid
-//  val theLastFifoId = RegInit(0.U)
-  println("alloc os :%d\n",alloc)
-  io.in.ar.ready := empty
+  
   val idxInsert = Mux(alloc,PriorityEncoder(readStack.map(e => !e.rvalid && e.readStatus === idel)),0.U)
-//
-  //receive AXIReq
+  io.in.ar.ready := empty
   when(alloc)
     {
-//      idxInsert = PriorityEncoder(readStack.map(!_.rvalid))
       val entry = readStack(idxInsert)
       val r_size1 = io.in.ar.bits.bytes1()
       val r_size = OH1ToUInt(r_size1.asUInt)
@@ -102,23 +92,22 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
       entry.arid := io.in.ar.bits.id
       entry.readStatus := 1.U
       entry.rsize := r_size1
-//      entry.entryFifoId := readStack.count(e => e.rvalid && (e.readStatus === waitSend))
-
-    //  entry.isFirstBeat := isFisrtAXI(io.in.ar.bits.id,readStack)
-      print("receive a axi request , entryId:%d arId:%d raddress:%d rsize:%d readStatus:%d entryFifoId:%d beatFifoId:%d\n")
     }
 
 
-  //issue TLReq
+  /* ======== Issue  Get Req ======== */
+  /*
+      Send a get request to get the data,
+      Send sequence is fifo
+  */
   val hasWaitTLReq = Cat(readStack.map(_.readStatus === waitSend)).orR
   axireqArb.io.in zip readStack foreach{
       case(in,e) =>
-      /*
-          when entry is valid and is the first beat
-       */
+
       in.valid := e.rvalid && (e.readStatus === waitSend) &&(e.entryFifoId === 0.U)
       in.bits := e
   }
+  val chosen = axireqArb.io.chosen
   io.out.a .valid := axireqArb.io.out.valid
   io.out.a .bits.opcode := TLMessages.Get
   io.out.a .bits.param := 0.U
@@ -129,14 +118,78 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
   io.out.a .bits.data := 0.U
   io.out.a .bits.corrupt := false.B
   axireqArb.io.out.ready := io.out.a .ready
-  val chosen = axireqArb.io.chosen
+  
+
+  /* ======== Receive  D Resp ======== */
+  /*
+      receive D Resp,store data in Sram
+  */
+  val canReceive = Cat(readStack.map(e =>e.rvalid && e.readStatus === waitResp)).orR
+  io.out.d.ready := canReceive
+  //status update shouble be delay one cycle for waiting data write in STAM
+  val d_valid = io.out.d.fire&& edgeOut.hasData(io.out.d.bits)
+  //control sram read and write
+  val wen = d_valid
+ 
+  when(d_valid)
+  {
+    val respTLId = io.out.d.bits.source
+    val respEntryId = respTLId(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt
+    val entryResp = readStack(respEntryId)
+
+    entryResp.readStatus := waitSendResp
+    entryResp.respStatus := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
+  }
+  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt, 1.U)
+
+  val dataWillWrite = RegNext(d_valid,false.B)
+  val respIdx = RegNext(io.out.d.bits.source(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt,0.U)
 
 
+  when(dataWillWrite)
+  {
+    readStack(respIdx).rready := true.B
+  }
 
-  //update
-  //when tlReq send , entry status will be waitResp
-  //when entry is waitSend,entryFIfoId -1
-  //chosen entry readStatue:waitSend => waitResp
+   /* ======== Issue AXIResp======== */
+  /*
+      chosen a fire entry , return R Resp
+      Beat with the same ID cannot be interleaved. Beat with different ids can be interleaved
+  */
+  val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.rready))
+  val proVec = priority.zip(readStack).map {
+      case(valid,e) =>
+        Mux(valid,e.RespFifoId,entries.U)
+  }
+  val max_priority_fifoid = proVec.reduceLeft(_ min _)
+
+  axirespArb.io.in zip readStack foreach{
+      case(in,e) =>
+      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid && e.rready)
+      in.bits := e
+  }
+  val ren = axirespArb.io.out.valid && !wen && io.in.r.ready
+  val chosenResp = axirespArb.io.chosen
+  //need delay one cycle to wait reading data
+  val willFree = RegNext(axirespArb.io.out.valid && !wen && io.in.r.ready,false.B)
+
+  readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
+  io.in.r.valid := RegNext(axirespArb.io.out.valid && !wen)
+  io.in.r.bits.data := RegNext(readDataStack.io.r.resp.data(0).ardata)
+  io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
+  io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
+  io.in.r.bits.last := true.B
+  axirespArb.io.out.ready := io.in.r.ready
+
+  //block axirespArb waiting for data to be reading 
+  when(axirespArb.io.out.valid && !wen && io.in.r.ready)
+  {
+    readStack(chosenResp).rready := false.B
+  }
+  
+
+  /* ======== Update ReadStatus and Fifoid ======== */
+
   when(io.in.ar.fire && io.out.a .fire)
     {
         val entry = readStack(idxInsert)
@@ -145,14 +198,12 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
     }.elsewhen(io.in.ar.fire && !io.out.a .fire)
     {
         val entry = readStack(idxInsert)
-        // a entry status will be sending
         entry.entryFifoId := readStack.count(e => e.rvalid && (e.readStatus === waitSend))
     }
 
   when(io.out.a .fire)
   {
     readStack(chosen).readStatus := waitResp
-//    readStack(chosen).rready := true.B
     for (e <- readStack) {
       when(e.readStatus === waitSend && e.rvalid) {
         e.entryFifoId := e.entryFifoId - 1.U
@@ -160,86 +211,23 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
     }
   }
 
-  //receive TLResq
-  val canReceive = Cat(readStack.map(e =>e.rvalid && e.readStatus === waitResp)).orR
-  io.out.d.ready := canReceive
-
-  //status update shouble be delay one cycle for waiting data write in STAM
-  val d_valid = io.out.d.fire&& edgeOut.hasData(io.out.d.bits)
-  val wen = d_valid
-  val ren = axirespArb.io.out.valid && !wen && io.in.r.ready
-  when(d_valid)
-  {
-    val respTLId = io.out.d.bits.source
-//    val respEntryId = respTLId(18, 14).asUInt // TODO: parameterization
-    val respEntryId = 0.U
-    val entryResp = readStack(respEntryId)
-
-    entryResp.readStatus := waitSendResp
-    entryResp.respStatus := !io.out.d.bits.denied //need change
-  }
-//  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(18, 14).asUInt, 1.U) // TODO: parameterization
-  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source.asUInt, 1.U)
-  val dataWillWrite = RegNext(d_valid,false.B)
-//  val respIdx = RegNext(io.out.d.bits.source(18, 14).asUInt,0.U) // TODO: parameterization
-  val respIdx = 0.U
-  when(dataWillWrite)
-  {
-    readStack(respIdx).rready := true.B
-  }
-  //issue AXIResp
-  val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.rready))
-  val proVec = priority.zip(readStack).map {
-      case(valid,e) =>
-        Mux(valid,e.RespFifoId,entries.U)
-  }
-  val max_priority_fifoid = proVec.reduceLeft(_ min _)
-  axirespArb.io.in zip readStack foreach{
-      case(in,e) =>
-      //when entry status is waitSendResp and is the first Beat in same AXI ID
-      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid && e.rready)
-      in.bits := e
-  }
-
-  //need delay one cycle to wait reading data
-  readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
-  io.in.r.valid := RegNext(axirespArb.io.out.valid && !wen)
-  io.in.r.bits.data := RegNext(readDataStack.io.r.resp.data(0).ardata)
-  io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
-  io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
-  io.in.r.bits.last := true.B
-  val chosenResp = axirespArb.io.chosen
-  val willFree = RegNext(axirespArb.io.out.valid && !wen && io.in.r.ready,false.B)
-  when(axirespArb.io.out.valid && !wen && io.in.r.ready)
-  {
-    readStack(chosenResp).rready := false.B
-  }
-
-
-  axirespArb.io.out.ready := io.in.r.ready
-
-  //clean the entry
-  //readStatue : waitResp => done
-  //rvalid => false.B
-  //beatFifoId - 1
-
   when( alloc && willFree)
       {
         val entry = readStack(idxInsert)
         entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id)))) - 1.U
         entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid ))) - 1.U
       }.elsewhen( alloc && !willFree)
-        {
+      {
           val entry = readStack(idxInsert)
           entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id))))
           entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid )))
-        }
+      }
 
   when(willFree){
       readStack(chosenResp).rvalid := false.B
       readStack(chosenResp).readStatus := 0.U
       readStack(chosenResp).RespFifoId := (entries-1).U
-        for (e <- readStack) {
+      for (e <- readStack) {
           when(e.rvalid && e.arid === readStack(chosenResp).arid) {
             e.BeatFifoId := e.BeatFifoId - 1.U
           }
