@@ -5,7 +5,7 @@ import chisel3.util._
 import freechips.rocketchip.amba.axi4.{AXI4BundleAR, AXI4BundleAW, AXI4BundleB, AXI4BundleParameters, AXI4BundleR, AXI4BundleW}
 import freechips.rocketchip.tilelink.{TLBundleA, TLBundleD, TLBundleParameters}
 import freechips.rocketchip.amba._
-import freechips.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._

@@ -4,7 +4,7 @@ import chisel3._
 import chiseltest._
 import freechips.rocketchip.diplomacy.{DisableMonitors, LazyModule}
 import org.scalatest.flatspec.AnyFlatSpec
-import chipsalliance.rocketchip.config._
+import org.chipsalliance.cde.config._
 import chisel3.stage.{ChiselGeneratorAnnotation, ChiselStage}
 import utility.{ChiselDB, FileRegisters}
 import freechips.rocketchip.diplomacy._

@@ -2,9 +2,9 @@ package axi2tl
 
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.tilelink._
-import chipsalliance.rocketchip.config.Field
+import org.chipsalliance.cde.config.Field
 import freechips.rocketchip.amba.axi4._
 import chisel3.internal.sourceinfo.SourceInfo
 import freechips.rocketchip.util._

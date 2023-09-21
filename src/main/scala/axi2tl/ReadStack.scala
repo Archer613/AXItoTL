@@ -7,7 +7,7 @@ import freechips.rocketchip.util._
 import scala.collection.immutable.Nil
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.tilelink.TLMessages._
-import chipsalliance.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.amba.axi4.{AXI4BundleAR, _}
 //import utility._
 import freechips.rocketchip.util._
