@@ -34,16 +34,27 @@ class RSBlock(implicit p:Parameters) extends AXItoTLBundle  {
 
 class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule {
   val io = IO(new Bundle(){
-    val in = Flipped(AXI4Bundle(edgeIn.bundle))
-    val out = TLBundle(edgeOut.bundle)
+    val in =new Bundle(){
+        val ar = Flipped(
+          DecoupledIO(
+          new AXI4BundleAR(
+            edgeIn.bundle
+          )
+        )
+        )
+        val r =  DecoupledIO(
+          new AXI4BundleR(
+            edgeIn.bundle
+          )
+        )
+    } 
+    val out = new Bundle(){
+        val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
+        val d = Flipped(DecoupledIO(new TLBundleD(
+          edgeOut.bundle
+        )))
+    }
   })
-
-  // readStack ignore aw,w,b channel
-  io.in.b.bits.resp := DontCare
-  io.in.b.bits.id := DontCare
-  io.in.b.valid := false.B
-  io.in.w.ready := false.B
-  io.in.aw.ready := false.B
 
   def mask(address: UInt, lgSize: UInt): UInt = {
     MaskGen(address, lgSize, axi2tlParams.beatBytes)
@@ -127,7 +138,7 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
   val canReceive = Cat(readStack.map(e =>e.rvalid && e.readStatus === waitResp)).orR
   io.out.d.ready := canReceive
   //status update shouble be delay one cycle for waiting data write in STAM
-  val d_valid = io.out.d.fire&& edgeOut.hasData(io.out.d.bits)
+  val d_valid = io.out.d.fire && edgeOut.hasData(io.out.d.bits)
   //control sram read and write
   val wen = d_valid
  

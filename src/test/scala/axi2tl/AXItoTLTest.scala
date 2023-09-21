@@ -44,7 +44,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   // val ram = LazyModule(new TLRAM(AddressSet(0, 0xffffL), beatBytes = 32))
   tlnode :=
     TLXbar() :=*
-      TLFragmenter(32, 64) :=*
+      TLFragmenter(8, 256) :=*
       TLCacheCork() :=*
       TLDelayer(delayFactor) :=*
       xbar
@@ -53,17 +53,20 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   val AXItoTL = LazyModule(new AXItoTL)
  
   xbar :=
-    TLFIFOFixer() :=
+    // TLFIFOFixer() :=
     TLWidthWidget(32) :=
     TLBuffer() :=
     AXItoTL.node :=
     AXI4Buffer() :=
     AXI4UserYanker(Some(16)) :=
-    AXI4Fragmenter() :=
-    AXI4Buffer() :=
-    AXI4Buffer() :=
     AXI4IdIndexer(4) :=
     l3FrontendAXI4Node
+    // AXI4UserYanker(Some(16)) :=
+    // AXI4Fragmenter() :=
+    // AXI4Buffer() :=
+    // AXI4Buffer() :=
+    // AXI4IdIndexer(4) :=
+    // l3FrontendAXI4Node
 
 
   val master_nodes = l3FrontendAXI4Node

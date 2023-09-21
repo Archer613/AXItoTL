@@ -54,17 +54,32 @@ object WSBlock{
 
 class WriteStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule {
   val io = IO(new Bundle() {
-    val in = Flipped(AXI4Bundle(edgeIn.bundle))
-    val out = TLBundle(edgeOut.bundle)
+      val in = new Bundle(){
+        val aw = Flipped(DecoupledIO(
+            new AXI4BundleAW(
+              edgeIn.bundle
+            )
+          ))
+        val w = Flipped(
+            DecoupledIO(
+              new AXI4BundleW(
+                edgeIn.bundle
+              )
+            ))
+        val b = DecoupledIO(
+            new AXI4BundleB(
+              edgeIn.bundle
+            )
+          )
+    }
+     val out = new Bundle(){
+        val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
+        val d = Flipped(DecoupledIO(new TLBundleD(
+          edgeOut.bundle
+        )))
+    }
   })
 
-  // writeStack ignore ar and r channel
-  io.in.r.bits.resp := DontCare
-  io.in.ar.ready := false.B
-  io.in.r.bits.last := DontCare
-  io.in.r.bits.data := DontCare
-  io.in.r.bits.id := DontCare
-  io.in.r.valid := false.B
 
   /*
      Data Structure:

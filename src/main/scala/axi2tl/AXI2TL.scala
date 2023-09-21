@@ -57,15 +57,54 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
 
     val arbiter = Module(new Arbiter(new TLBundleA(node.out.head._2.bundle), 2))
     // AXI in
-    readStack.io.in <> node.in.head._1
-    writeStack.io.in <> node.in.head._1
+    // readStack.io.in <> node.in.head._1
+    // writeStack.io.in <> node.in.head._1
+
+    readStack.io.in.ar <> node.in.head._1.ar
+    readStack.io.in.r <> node.in.head._1.r
+    
+    writeStack.io.in.aw <> node.in.head._1.aw
+    writeStack.io.in.w <> node.in.head._1.w
+    writeStack.io.in.b <> node.in.head._1.b
 
     // TL out
     arbiter.io.in(0) <> readStack.io.out.a
     arbiter.io.in(1) <> writeStack.io.out.a
     node.out.head._1.a <> arbiter.io.out
-    readStack.io.out.d <> node.out.head._1.d
-    writeStack.io.out.d <> node.out.head._1.d
+
+
+
+
+    val out = node.out.head._1
+   
+    // val writeStack_d  = Wire(writeStack.io.out.d)
+    // val readStack_d  = Wire(readStack.io.out.d)
+
+    val d_hasData = node.out.head._2.hasData(out.d.bits)
+    // val d_hasData = false.B
+
+    out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
+
+    readStack.io.out.d.valid := out.d.valid && d_hasData
+    writeStack.io.out.d.valid := out.d.valid && !d_hasData
+
+    readStack.io.out.d.bits.source   := out.d.bits.source 
+    readStack.io.out.d.bits.data := out.d.bits.data
+    readStack.io.out.d.bits.param := out.d.bits.param
+    readStack.io.out.d.bits.size := out.d.bits.size
+    readStack.io.out.d.bits.opcode := out.d.bits.opcode
+    readStack.io.out.d.bits.sink := out.d.bits.sink
+    readStack.io.out.d.bits.denied := out.d.bits.denied
+    readStack.io.out.d.bits.corrupt := out.d.bits.corrupt
+
+    writeStack.io.out.d.bits.source  := out.d.bits.source 
+    writeStack.io.out.d.bits.data := out.d.bits.data
+    writeStack.io.out.d.bits.param := out.d.bits.param
+    writeStack.io.out.d.bits.size := out.d.bits.size
+    writeStack.io.out.d.bits.opcode := out.d.bits.opcode
+    writeStack.io.out.d.bits.sink := out.d.bits.sink
+    writeStack.io.out.d.bits.denied := out.d.bits.denied
+    writeStack.io.out.d.bits.corrupt := out.d.bits.corrupt
 
 
 
