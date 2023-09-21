@@ -74,3 +74,11 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
 
   }
 }
+object AXI2TL
+{
+  def apply()(implicit p: Parameters): AXI4ToTLNode =
+  {
+    val axi2tl = LazyModule(new AXItoTL)
+    axi2tl.node
+  }
+}
