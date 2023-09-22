@@ -140,7 +140,7 @@ class  AXItoTL1(
 
 
     val out = io.out
-    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData  ,true.B,false.B)
+    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData || out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
 
     out.d.ready := readStack.io.out.d.ready || writeStack.io.out.d.ready
 
