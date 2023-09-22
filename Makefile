@@ -6,7 +6,7 @@ compile:
 	mill -i AXI2TL.compile
 
 test-dma:
-	mill -i AXI2TL.test.runMain axi2tl.TestDMA -td build
+	mill -i AXI2TL.test.runMain axi2tl.TestDMA -td build --full-stacktrace
 	mv build/TestDMA.v build/TestTop.v
 
 clean:

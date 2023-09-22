@@ -172,7 +172,7 @@ class WriteStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule
 
    /* ======== Receive d resp and Send b resp ======== */
   val canRecD = Cat(writeStack.map(e => e.wvalid && e.wready && e.wstatus === waitDResp)).orR
-  val d_valid = io.out.d.fire && !edgeOut.hasData(io.out.d.bits)
+  val d_valid = io.out.d.fire 
   io.out.d.ready := canRecD
 
   when(d_valid)
@@ -236,6 +236,8 @@ class WriteStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule
               }
           }
     }
+    
+
     
   val willput = RegNext(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready)
   when(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready) {

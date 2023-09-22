@@ -43,8 +43,11 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
         println(fs.map { f => s"$prefix/${f.key.name}: (${f.data.getWidth}-bit)" }.mkString("\n"))
       }
     }
-    print_bundle_fields(node.in.head._2.bundle.requestFields, "usr")
-    print_bundle_fields(node.in.head._2.bundle.echoFields, "echo")
+    // val ei = node.in._2
+    // print_bundle_fields(node.in.head._2.bundle.requestFields, "usr")
+    // print_bundle_fields(node.in.head._2.bundle.echoFields, "echo")
+    // println(s"axiAddrBits: ${ei.}")
+    // println(s"axiIdBits: ${axiIdBits}")
 
     val readStack = Module(new ReadStack(entries = axi2tlParams.readEntriesSize)(p.alterPartial {
         case EdgeInKey => node.in.head._2
@@ -83,7 +86,8 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
     val d_hasData = node.out.head._2.hasData(out.d.bits)
     // val d_hasData = false.B
 
-    out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
+    // out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
+    out.d.ready := readStack.io.out.d.ready || writeStack.io.out.d.ready
 
     readStack.io.out.d.valid := out.d.valid && d_hasData
     writeStack.io.out.d.valid := out.d.valid && !d_hasData

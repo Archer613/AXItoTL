@@ -18,7 +18,27 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
    *    |
    *   MEM
    */
-
+ def createManagerNode(name: String, sources: Int) = {
+  val xfer = TransferSizes(32, 32)
+  val slaveNode = TLManagerNode(Seq(
+   TLSlavePortParameters.v1(Seq(
+    TLManagerParameters(
+     address     = Seq(AddressSet(0, 0xffffffffL)),
+     regionType    = RegionType.CACHED,
+     executable    = true,
+     supportsAcquireT = xfer,
+     supportsAcquireB = xfer,
+     fifoId      = None
+    )),
+    beatBytes = 32,
+    minLatency = 2,
+    responseFields = Nil,
+    requestKeys = Nil,
+    endSinkId = sources
+   ))
+  )
+  slaveNode
+ }
   val delayFactor = 0.5
 
   val idBits = 14
@@ -26,11 +46,12 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
   val l3FrontendAXI4Node = AXI4MasterNode(Seq(AXI4MasterPortParameters(
     Seq(AXI4MasterParameters(
       name = "dma",
-      id = IdRange(0, 1 << idBits)
+      id = IdRange(0, 1 << idBits),
+      maxFlight = Some(16)
     ))
   )))
 
-  val xbar = TLXbar()
+  // val xbar = TLXbar()
   val tlnode = TLManagerNode(Seq(TLSlavePortParameters.v1(Seq(TLManagerParameters(
     address = Seq(AddressSet(
       0x00000000L, 0xfffffffffL
@@ -41,25 +62,21 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
     supportsPutPartial = TransferSizes(1, 32)
     ,
     fifoId = Some(0))), 8)))
+  // val tlnode1 = createManagerNode("tl-node1",idBits+5)
   // val ram = LazyModule(new TLRAM(AddressSet(0, 0xffffL), beatBytes = 32))
-  tlnode :=
-    TLXbar() :=*
-      TLFragmenter(8, 256) :=*
-      TLCacheCork() :=*
-      TLDelayer(delayFactor) :=*
-      xbar
+  // tlnode :=
+  //   TLXbar() :=*
+  //     // TLFragmenter(8, 256) :=*
+  //     // TLCacheCork() :=*
+  //     TLDelayer(delayFactor) :=*
+  //     xbar
 
   val axi2tlParams = p(AXI2TLParamKey)
   val AXItoTL = LazyModule(new AXItoTL)
- 
-  xbar :=
     // TLFIFOFixer() :=
-    TLWidthWidget(32) :=
-    TLBuffer() :=
+    // TLWidthWidget(32) :=
+    tlnode :=
     AXItoTL.node :=
-    AXI4Buffer() :=
-    AXI4UserYanker(Some(16)) :=
-    AXI4IdIndexer(4) :=
     l3FrontendAXI4Node
     // AXI4UserYanker(Some(16)) :=
     // AXI4Fragmenter() :=
