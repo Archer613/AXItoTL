@@ -52,30 +52,36 @@ object WSBlock{
 }
 
 
-class WriteStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule {
+class WriteStack(
+                entries : Int = 8,
+                AXItoTLEdgeIn : AXI4EdgeParameters,
+                AXItoTLEdgeOut: TLEdgeOut,
+                AXItoTLBundleIn:AXI4Bundle,
+                AXItoTLBundleOut : TLBundle
+)(implicit p:Parameters) extends AXItoTLModule {
   val io = IO(new Bundle() {
       val in = new Bundle(){
         val aw = Flipped(DecoupledIO(
             new AXI4BundleAW(
-              edgeIn.bundle
+              AXItoTLEdgeIn.bundle
             )
           ))
         val w = Flipped(
             DecoupledIO(
               new AXI4BundleW(
-                edgeIn.bundle
+                AXItoTLEdgeIn.bundle
               )
             ))
         val b = DecoupledIO(
             new AXI4BundleB(
-              edgeIn.bundle
+              AXItoTLEdgeIn.bundle
             )
           )
     }
      val out = new Bundle(){
-        val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
+        val a = DecoupledIO(new TLBundleA(AXItoTLEdgeOut.bundle))
         val d = Flipped(DecoupledIO(new TLBundleD(
-          edgeOut.bundle
+          AXItoTLEdgeOut.bundle
         )))
     }
   })
@@ -178,7 +184,7 @@ class WriteStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule
   when(d_valid)
     {
         val sourceD = io.out.d.bits.source
-        val wsIdx = sourceD(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1,edgeIn.bundle.idBits).asUInt 
+        val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1,axiIdBits).asUInt 
         
         writeStack(wsIdx).wstatus := sendB
         writeStack(wsIdx).d_resp := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
@@ -187,12 +193,12 @@ class WriteStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule
   when(d_valid && io.in.b.fire)
     {
       val sourceD = io.out.d.bits.source
-      val wsIdx = sourceD(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt 
+      val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1, axiIdBits).asUInt 
       writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB)) - 1.U
     }.elsewhen(d_valid && !io.in.b.fire)
     {
       val sourceD = io.out.d.bits.source
-     val wsIdx = sourceD(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt 
+     val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1, axiIdBits).asUInt 
    
       writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB)) - 1.U
     }

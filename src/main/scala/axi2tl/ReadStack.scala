@@ -32,26 +32,31 @@ class RSBlock(implicit p:Parameters) extends AXItoTLBundle  {
   val ardata = UInt(axiDataBits.W)
 }
 
-class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule {
-  val io = IO(new Bundle(){
+class ReadStack(entries : Int = 8,
+                AXItoTLEdgeIn : AXI4EdgeParameters,
+                AXItoTLEdgeOut: TLEdgeOut,
+                AXItoTLBundleIn:AXI4Bundle,
+                AXItoTLBundleOut : TLBundle
+)(implicit p:Parameters) extends AXItoTLModule {
+   val io = IO(new Bundle(){
     val in =new Bundle(){
         val ar = Flipped(
           DecoupledIO(
           new AXI4BundleAR(
-            edgeIn.bundle
+            AXItoTLEdgeIn.bundle
           )
         )
         )
         val r =  DecoupledIO(
           new AXI4BundleR(
-            edgeIn.bundle
+            AXItoTLEdgeIn.bundle
           )
         )
     } 
     val out = new Bundle(){
-        val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
+        val a = DecoupledIO(new TLBundleA(AXItoTLEdgeOut.bundle))
         val d = Flipped(DecoupledIO(new TLBundleD(
-          edgeOut.bundle
+          AXItoTLEdgeOut.bundle
         )))
     }
   })
@@ -138,23 +143,24 @@ class ReadStack(entries : Int = 8)(implicit p:Parameters) extends AXItoTLModule 
   val canReceive = Cat(readStack.map(e =>e.rvalid && e.readStatus === waitResp)).orR
   io.out.d.ready := canReceive
   //status update shouble be delay one cycle for waiting data write in STAM
-  val d_valid = io.out.d.fire && edgeOut.hasData(io.out.d.bits)
+   val d_hasData = Mux(io.out.d.bits.opcode === TLMessages.AccessAckData || io.out.d.bits.opcode === TLMessages.GrantData  ,true.B,false.B)
+  val d_valid = io.out.d.fire && d_hasData
   //control sram read and write
   val wen = d_valid
  
   when(d_valid)
   {
     val respTLId = io.out.d.bits.source
-    val respEntryId = respTLId(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt
+    val respEntryId = respTLId(axiIdBits+ axi2tlParams.ridBits - 1, axiIdBits).asUInt
     val entryResp = readStack(respEntryId)
 
     entryResp.readStatus := waitSendResp
     entryResp.respStatus := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
   }
-  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt, 1.U)
+  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(axiIdBits+ axi2tlParams.ridBits - 1, axiIdBits).asUInt, 1.U)
 
   val dataWillWrite = RegNext(d_valid,false.B)
-  val respIdx = RegNext(io.out.d.bits.source(edgeIn.bundle.idBits + axi2tlParams.ridBits - 1, edgeIn.bundle.idBits).asUInt,0.U)
+  val respIdx = RegNext(io.out.d.bits.source(axiIdBits+ axi2tlParams.ridBits - 1, axiIdBits).asUInt,0.U)
 
 
   when(dataWillWrite)

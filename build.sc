@@ -8,11 +8,11 @@ import $file.`rocket-chip`.`api-config-chipsalliance`.`build-rules`.mill.build
 import $file.`rocket-chip`.hardfloat.build
 
 val defaultVersions = Map(
-  "chisel3" -> "3.5.0",
-  "chisel3-plugin" -> "3.5.0",
-  "chiseltest" -> "0.3.2",
-  "scala" -> "2.12.13",
-  "scalatest" -> "3.2.7"
+    "chisel3" -> "3.5.0",
+    "chisel3-plugin" -> "3.5.0",
+    "chiseltest" -> "0.3.2",
+    "scala" -> "2.12.13",
+    "scalatest" -> "3.2.7"
 )
 
 def getVersion(dep: String, org: String = "edu.berkeley.cs", cross: Boolean = false) = {
