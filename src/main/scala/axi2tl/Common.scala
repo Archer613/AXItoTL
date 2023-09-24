@@ -10,110 +10,126 @@ import freechips.rocketchip.tilelink.{TLBundleA, TLBundleD, TLBundleParameters}
 abstract class AXItoTLModule(implicit val p: Parameters) extends Module with HasAXI2TLParameters
 abstract class AXItoTLBundle(implicit val p: Parameters) extends Bundle with HasAXI2TLParameters
 
-//class AXIInBundle(implicit p : Parameters) extends AXItoTLBundle {
-//  val ar = Flipped(DecoupledIO(
-//    new AXI4BundleAR(
-//      edgeIn.bundle
-//    )
-//  ))
-//  val aw = Flipped(DecoupledIO(
-//    new AXI4BundleAW(
-//      edgeIn.bundle
-//    )
-//  ))
-//  val w = Flipped(
-//    DecoupledIO(
-//      new AXI4BundleW(
-//        edgeIn.bundle
-//      )
-//    ))
-//  val d = Flipped(DecoupledIO(new TLBundleD(
-//    edgeOut.bundle
-//  )))
-//
-//  val b = Flipped(DecoupledIO(
-//    new AXI4BundleB(
-//      edgeIn.bundle
-//    )
-//  )
-//  )
-//}
-//
-//class AXIOutBundle(implicit p : Parameters) extends AXItoTLBundle{
-//  val b = DecoupledIO(
-//    new AXI4BundleB(
-//      edgeIn.bundle
-//    )
-//  )
-//  val r = DecoupledIO(
-//    new AXI4BundleR(
-//      edgeIn.bundle
-//    )
-//  )
-//
-//  val aw = DecoupledIO(
-//    new AXI4BundleAW(edgeIn.bundle)
-//  )
-//  val w = DecoupledIO(
-//    new AXI4BundleW(edgeIn.bundle)
-//  )
-//  val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
-//
-//}
-//
-//
-//class MemAXIReqestBundle (implicit p : Parameters) extends AXItoTLBundle {
-//  val aw = DecoupledIO(
-//    new AXI4BundleAW(edgeIn.bundle)
-//  )
-//  val w = DecoupledIO(
-//    new AXI4BundleW(edgeIn.bundle)
-//  )
-//}
-//class MemAXIRespBundle (implicit p : Parameters) extends AXItoTLBundle {
-//  val b = Flipped(
-//    DecoupledIO(
-//      new AXI4BundleB(edgeIn.bundle)))
-//}
-//
-//class AXIWriterRequestBundle(implicit p : Parameters) extends AXItoTLBundle {
-//  val aw = Flipped(DecoupledIO(
-//    new AXI4BundleAW(edgeIn.bundle)
-//  ))
-//  val w = Flipped(
-//    DecoupledIO(
-//      new AXI4BundleW(edgeIn.bundle)
-//    ))
-//}
-//class AXIWriteRespBundle(implicit p : Parameters) extends AXItoTLBundle{
-//  val b =DecoupledIO(
-//    new AXI4BundleB(
-//      edgeIn.bundle
-//    )
-//  )
-//}
-//
-//
-//class TLRequestBundel(implicit p : Parameters) extends AXItoTLBundle {
-//  val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
-//}
-//
-//class AXIRequestBundel(implicit p : Parameters) extends AXItoTLBundle {
-//  val ar = Flipped(DecoupledIO(
-//    new AXI4BundleAR(edgeIn.bundle)
-//  ))
-//
-//
-//}
-//
-//class TLRespBundle(implicit p : Parameters) extends AXItoTLBundle {
-//  val d = Flipped(DecoupledIO(new TLBundleD(edgeOut.bundle)))
-//}
-//
-//class AXIRespBundle(implicit p : Parameters) extends AXItoTLBundle {
-//  val r = DecoupledIO(
-//    new AXI4BundleR(
-//      edgeIn.bundle
-//    )
-//  )
-//}
+
+class AXIIn(implicit p:Parameters) extends AXItoTLBundle{
+    val ar = Flipped(DecoupledIO(
+        new AXI4BundleAR(new AXI4BundleParameters(
+          addrBits = axiAddrBits,
+          dataBits = axiDataBits,
+          idBits = axiIdBits
+        ))
+      ))
+    val aw = Flipped(DecoupledIO(
+        new AXI4BundleAW(new AXI4BundleParameters(
+          addrBits = axiAddrBits,
+          dataBits = axiDataBits,
+          idBits = axiIdBits
+        ))
+    ))
+    val w = Flipped(
+        DecoupledIO(
+          new AXI4BundleW(new AXI4BundleParameters(
+            addrBits = axiAddrBits,
+            dataBits = axiDataBits,
+            idBits = axiIdBits
+          ))
+    ))
+
+    val r = DecoupledIO(
+        new AXI4BundleR(
+        new AXI4BundleParameters(
+           addrBits = axiAddrBits,
+           dataBits = axiDataBits,
+           idBits = axiIdBits
+        )
+        )
+    )
+
+    val b = DecoupledIO(
+    new AXI4BundleB(
+      new AXI4BundleParameters(
+        addrBits = axiAddrBits,
+        dataBits = axiDataBits,
+        idBits = axiIdBits
+      )
+    )
+  )
+
+}
+
+
+class TLOut(implicit  p: Parameters) extends  AXItoTLBundle{
+     val a = DecoupledIO(new TLBundleA(new TLBundleParameters(
+            addressBits = tlAddrBits,
+            dataBits = tlDataBits, 
+            sourceBits = sourceBits, 
+            sinkBits = sinkBits, 
+            sizeBits = tlSizeBits, 
+            echoFields = tlechoFields, 
+            requestFields = tlrequestFields, 
+            responseFields = tlresponseFields, 
+            hasBCE = false
+  )))
+    val d = Flipped(DecoupledIO(new TLBundleD(new TLBundleParameters(
+   addressBits = tlAddrBits,
+            dataBits = tlDataBits, 
+            sourceBits = sourceBits, 
+            sinkBits = sinkBits, 
+            sizeBits = tlSizeBits, 
+            echoFields = tlechoFields, 
+            requestFields = tlrequestFields, 
+            responseFields = tlresponseFields, 
+            hasBCE = false
+  ))))
+}
+
+class ReadStackIn(implicit  p:Parameters) extends AXItoTLBundle{
+    val ar = Flipped(DecoupledIO(
+        new AXI4BundleAR(new AXI4BundleParameters(
+          addrBits = axiAddrBits,
+          dataBits = axiDataBits,
+          idBits = axiIdBits
+        ))
+      ))
+  
+    val r = DecoupledIO(
+        new AXI4BundleR(
+        new AXI4BundleParameters(
+           addrBits = axiAddrBits,
+           dataBits = axiDataBits,
+           idBits = axiIdBits
+        )
+        )
+    )
+
+
+}
+
+class WriteStackIn(implicit  p:Parameters) extends AXItoTLBundle{
+    val aw = Flipped(DecoupledIO(
+        new AXI4BundleAW(new AXI4BundleParameters(
+          addrBits = axiAddrBits,
+          dataBits = axiDataBits,
+          idBits = axiIdBits
+        ))
+    ))
+    val w = Flipped(
+        DecoupledIO(
+          new AXI4BundleW(new AXI4BundleParameters(
+            addrBits = axiAddrBits,
+            dataBits = axiDataBits,
+            idBits = axiIdBits
+          ))
+    ))
+
+    val b = DecoupledIO(
+    new AXI4BundleB(
+      new AXI4BundleParameters(
+        addrBits = axiAddrBits,
+        dataBits = axiDataBits,
+        idBits = axiIdBits
+      )
+    )
+  )
+
+}

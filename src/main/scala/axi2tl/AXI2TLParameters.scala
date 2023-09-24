@@ -35,3 +35,18 @@ case class AXI2TLParam(
 case object EdgeInKey extends Field[AXI4EdgeParameters]
 
 case object EdgeOutKey extends Field[TLEdgeOut]
+
+case object  axiAddrBitsKey extends  Field[Int]
+case object  axiSizeBitsKey extends  Field[Int]
+case object  axiDataBitsKey extends  Field[Int]
+case object  axiIdBitsKey extends  Field[Int]
+case object  axiLenBitsKey extends  Field[Int]
+case object  tlAddrBitsKey extends  Field[Int]
+case object  tlSizeBitsKey extends  Field[Int]
+case object  tlDataBitsKey extends  Field[Int]
+case object  sinkBitsKey extends  Field[Int]
+case object  sourceBitsKey extends  Field[Int]
+case object  tlechoFieldsKey extends  Field[Seq[BundleFieldBase]]
+case object  tlrequestFieldsKey extends  Field[Seq[BundleFieldBase]]
+case object  tlresponseFieldsKey extends  Field[Seq[BundleFieldBase]]
+

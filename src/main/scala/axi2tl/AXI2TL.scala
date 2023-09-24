@@ -17,9 +17,24 @@ trait HasAXI2TLParameters {
   val p: Parameters
   val axi2tlParams = p(AXI2TLParamKey)
 
+  // val axiAddrBits = p(axiAddrBitsKey)
+  // val axiSizeBits = p(axiSizeBitsKey)
+  // val axiDataBits = p(axiDataBitsKey)
+  // val axiIdBits = p(axiIdBitsKey)
+  // val axiLenBits = p(axiLenBitsKey)
+
+  // val tlAddrBits = p(tlAddrBitsKey)
+  // val tlSizeBits = p(tlSizeBitsKey)
+  // val tlDataBits = p(tlDataBitsKey)
+  // val sourceBits = p(sourceBitsKey)
+  // val sinkBits = p(sinkBitsKey)
+  // val  tlechoFields = p(tlechoFieldsKey)
+  // val  tlrequestFields = p(tlrequestFieldsKey)
+  // val  tlresponseFields = p(tlresponseFieldsKey)
+
   lazy val edgeIn = p(EdgeInKey)
   lazy val edgeOut = p(EdgeOutKey)
-
+  
   lazy val axiAddrBits = edgeIn.bundle.addrBits
   lazy val axiSizeBits = edgeIn.bundle.sizeBits
   lazy val axiDataBits = edgeIn.bundle.dataBits
@@ -30,11 +45,134 @@ trait HasAXI2TLParameters {
   lazy val tlSizeBits = edgeIn.bundle.sizeBits
   lazy val tlDataBits = edgeOut.bundle.dataBits
   lazy val sourceBits = edgeOut.bundle.sourceBits
+  lazy val sinkBits = edgeOut.bundle.sinkBits
+  lazy val  tlechoFields = edgeOut.bundle.echoFields
+  lazy val  tlrequestFields = edgeOut.bundle.requestFields
+  lazy val  tlresponseFields = edgeOut.bundle.responseFields
 }
 
-class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
 
-  val node = AXI4ToTLNode(wcorrupt = false)
+case class MyAXI4ToTLNode(wcorrupt: Boolean, ridBits: Int)(implicit valName: ValName) extends MixedAdapterNode(AXI4Imp, TLImp)(
+  dFn = {  mp => TLMasterPortParameters.v1(
+      clients = mp.masters.map{m =>
+          TLMasterParameters.v1(
+            name        = s"axitotlnode",
+            sourceId    = IdRange(0, 1 << (log2Ceil(m.id.end) + ridBits+1)), // R+W ids are distinct
+            nodePath    = m.nodePath,
+            requestFifo = true
+          )
+      }
+      ,
+      echoFields    = mp.echoFields,
+      requestFields = AMBAProtField() +: mp.requestFields,
+      responseKeys  = mp.responseKeys
+      )
+  },
+  uFn = { mp => AXI4SlavePortParameters(
+    slaves = mp.managers.map { m =>
+      val maxXfer = TransferSizes(1, mp.beatBytes * (1 << AXI4Parameters.lenBits))
+      AXI4SlaveParameters(
+        address       = m.address,
+        resources     = m.resources,
+        regionType    = m.regionType,
+        executable    = m.executable,
+        nodePath      = m.nodePath,
+        supportsWrite = m.supportsPutPartial.intersect(maxXfer),
+        supportsRead  = m.supportsGet.intersect(maxXfer),
+        interleavedId = Some(0))}, // TL2 never interleaves D beats
+    beatBytes = mp.beatBytes,
+    minLatency = mp.minLatency,
+    responseFields = mp.responseFields,
+    requestKeys    = (if (wcorrupt) Seq(AMBACorrupt) else Seq()) ++ mp.requestKeys.filter(_ != AMBAProt))
+  })
+
+
+
+class  AXItoTL1(
+  AXItoTLEdgeIn : AXI4EdgeParameters,
+  AXItoTLEdgeOut: TLEdgeOut,
+  AXItoTLBundleIn:AXI4Bundle,
+  AXItoTLBundleOut : TLBundle
+)(implicit p: Parameters) extends AXItoTLModule  {
+    val io = IO(
+      new Bundle(){
+         val in = Flipped(new AXI4Bundle(AXItoTLEdgeIn.bundle))
+         val out = new TLBundle(AXItoTLEdgeOut.bundle)
+      }
+    )
+    val params = p.alterPartial{
+      case EdgeInKey => AXItoTLEdgeIn
+      case EdgeOutKey => AXItoTLEdgeOut
+    }
+    val readStack = Module(new ReadStack1(
+      entries = axi2tlParams.readEntriesSize, 
+      AXItoTLEdgeIn = AXItoTLEdgeIn,
+      AXItoTLEdgeOut = AXItoTLEdgeOut,
+      AXItoTLBundleIn= AXItoTLBundleIn,
+      AXItoTLBundleOut = AXItoTLBundleOut
+    )(params))
+    val writeStack = Module(new WriteStack1(
+      entries = axi2tlParams.readEntriesSize, 
+      AXItoTLEdgeIn = AXItoTLEdgeIn,
+      AXItoTLEdgeOut = AXItoTLEdgeOut,
+      AXItoTLBundleIn= AXItoTLBundleIn,
+      AXItoTLBundleOut = AXItoTLBundleOut
+    )(params))
+
+    val arbiter = Module(
+      new Arbiter(
+        new TLBundleA(AXItoTLEdgeOut.bundle),
+             2
+      )
+    )
+
+    readStack.io.in.ar <> io.in.ar
+    readStack.io.in.r <> io.in.r
+    
+    writeStack.io.in.aw <> io.in.aw
+    writeStack.io.in.w <> io.in.w
+    writeStack.io.in.b <> io.in.b
+
+    // TL out
+    arbiter.io.in(0) <> readStack.io.out.a
+    arbiter.io.in(1) <> writeStack.io.out.a
+    io.out.a <> arbiter.io.out
+
+
+    val out = io.out
+    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData || out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
+
+    out.d.ready := readStack.io.out.d.ready || writeStack.io.out.d.ready
+
+    readStack.io.out.d.valid := out.d.valid && d_hasData
+    writeStack.io.out.d.valid := out.d.valid && !d_hasData
+
+    readStack.io.out.d.bits.source   := out.d.bits.source 
+    readStack.io.out.d.bits.data := out.d.bits.data
+    readStack.io.out.d.bits.param := out.d.bits.param
+    readStack.io.out.d.bits.size := out.d.bits.size
+    readStack.io.out.d.bits.opcode := out.d.bits.opcode
+    readStack.io.out.d.bits.sink := out.d.bits.sink
+    readStack.io.out.d.bits.denied := out.d.bits.denied
+    readStack.io.out.d.bits.corrupt := out.d.bits.corrupt
+
+    writeStack.io.out.d.bits.source  := out.d.bits.source 
+    writeStack.io.out.d.bits.data := out.d.bits.data
+    writeStack.io.out.d.bits.param := out.d.bits.param
+    writeStack.io.out.d.bits.size := out.d.bits.size
+    writeStack.io.out.d.bits.opcode := out.d.bits.opcode
+    writeStack.io.out.d.bits.sink := out.d.bits.sink
+    writeStack.io.out.d.bits.denied := out.d.bits.denied
+    writeStack.io.out.d.bits.corrupt := out.d.bits.corrupt
+}
+
+
+
+
+
+class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
+  
+  val node = MyAXI4ToTLNode(wcorrupt = false, axi2tlParams.ridBits)
 
   lazy val module = new LazyModuleImp(this) {
 
@@ -43,10 +181,11 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
         println(fs.map { f => s"$prefix/${f.key.name}: (${f.data.getWidth}-bit)" }.mkString("\n"))
       }
     }
-    print_bundle_fields(node.in.head._2.bundle.requestFields, "usr")
-    print_bundle_fields(node.in.head._2.bundle.echoFields, "echo")
-//    val readStack = Module(new ReadStack(entries = 8))
-//    val writeStack = Module(new WriteStack(entries = 8))
+    // val ei = node.in._2
+    // print_bundle_fields(node.in.head._2.bundle.requestFields, "usr")
+    // print_bundle_fields(node.in.head._2.bundle.echoFields, "echo")
+    // println(s"axiAddrBits: ${ei.}")
+    // println(s"axiIdBits: ${axiIdBits}")
 
     val readStack = Module(new ReadStack(entries = axi2tlParams.readEntriesSize)(p.alterPartial {
         case EdgeInKey => node.in.head._2
@@ -59,18 +198,56 @@ class AXItoTL(implicit p: Parameters) extends LazyModule with HasAXI2TLParameter
 
     val arbiter = Module(new Arbiter(new TLBundleA(node.out.head._2.bundle), 2))
     // AXI in
-    readStack.io.in <> node.in.head._1
-    writeStack.io.in <> node.in.head._1
+    // readStack.io.in <> node.in.head._1
+    // writeStack.io.in <> node.in.head._1
+
+    readStack.io.in.ar <> node.in.head._1.ar
+    readStack.io.in.r <> node.in.head._1.r
+    
+    writeStack.io.in.aw <> node.in.head._1.aw
+    writeStack.io.in.w <> node.in.head._1.w
+    writeStack.io.in.b <> node.in.head._1.b
 
     // TL out
     arbiter.io.in(0) <> readStack.io.out.a
     arbiter.io.in(1) <> writeStack.io.out.a
     node.out.head._1.a <> arbiter.io.out
-    readStack.io.out.d <> node.out.head._1.d
-    writeStack.io.out.d <> node.out.head._1.d
 
 
 
+
+    val out = node.out.head._1
+   
+    // val writeStack_d  = Wire(writeStack.io.out.d)
+    // val readStack_d  = Wire(readStack.io.out.d)
+
+    // val d_hasData = node.out.head._2.hasData(out.d.bits)
+    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData || out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
+    // val d_hasData = false.B
+
+    // out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
+    out.d.ready := readStack.io.out.d.ready || writeStack.io.out.d.ready
+
+    readStack.io.out.d.valid := out.d.valid && d_hasData
+    writeStack.io.out.d.valid := out.d.valid && !d_hasData
+
+    readStack.io.out.d.bits.source   := out.d.bits.source 
+    readStack.io.out.d.bits.data := out.d.bits.data
+    readStack.io.out.d.bits.param := out.d.bits.param
+    readStack.io.out.d.bits.size := out.d.bits.size
+    readStack.io.out.d.bits.opcode := out.d.bits.opcode
+    readStack.io.out.d.bits.sink := out.d.bits.sink
+    readStack.io.out.d.bits.denied := out.d.bits.denied
+    readStack.io.out.d.bits.corrupt := out.d.bits.corrupt
+
+    writeStack.io.out.d.bits.source  := out.d.bits.source 
+    writeStack.io.out.d.bits.data := out.d.bits.data
+    writeStack.io.out.d.bits.param := out.d.bits.param
+    writeStack.io.out.d.bits.size := out.d.bits.size
+    writeStack.io.out.d.bits.opcode := out.d.bits.opcode
+    writeStack.io.out.d.bits.sink := out.d.bits.sink
+    writeStack.io.out.d.bits.denied := out.d.bits.denied
+    writeStack.io.out.d.bits.corrupt := out.d.bits.corrupt
 
   }
 }
