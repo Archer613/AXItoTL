@@ -20,7 +20,7 @@ class readEntry(implicit p:Parameters) extends AXItoTLBundle{
   val raddress = UInt(axiAddrBits.W)
   val entryid = UInt(axi2tlParams.ridBits.W)
   val arid = UInt(axiIdBits.W)
-  val readStatus = UInt(2.W)
+  val readStatus = UInt(3.W)
   val respStatus = UInt(4.W)
   val rsize = UInt(axiSizeBits.W)
   val entryFifoId = UInt(axi2tlParams.fifoBits.W)

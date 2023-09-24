@@ -20,7 +20,7 @@ class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
     val wready = Bool()
     val waddr = UInt(tlAddrBits.W)
     val respStatus  = UInt(2.W)
-    val wstatus = UInt(2.W)
+    val wstatus = UInt(3.W)
     val entryid = UInt(axi2tlParams.ridBits.W)
     val awid = UInt(axiIdBits.W)
     val entryFifoid = UInt(axi2tlParams.ridBits.W)
@@ -100,7 +100,7 @@ class WriteStack1(
     way = 1,
     singlePort = true
   ))
-  val idel::waitW::sending::sendW::waitDResp::sendB::done::Nil = Enum(7)
+  val idel::waitW::sendPut::waitDResp::sendB::done::Nil = Enum(6)
   val wreqArb = Module(new Arbiter(new writeEntry,entries))
   val sendBArb = Module(new Arbiter(new writeEntry,entries))
 
@@ -158,7 +158,7 @@ class WriteStack1(
 
   wreqArb.io.in zip writeStack foreach{
         case(in,e) =>
-        in.valid := e.wvalid && e.wstatus === sending  && e.entryFifoid === 0.U && e.wready
+        in.valid := e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U && e.wready
         in.bits := e
   }
   val WSBIdx = wreqArb.io.chosen
@@ -233,7 +233,7 @@ class WriteStack1(
           writeStack foreach{
             e =>
               when(e.wvalid && e.wstatus === waitW &&e.waitWFifoId === 0.U){
-                e.wstatus := sending
+                e.wstatus := sendPut
                 e.waitWFifoId := e.waitWFifoId-1.U
                 e.wready := true.B
               }.elsewhen(e.wvalid&&(e.wstatus === waitW))
@@ -252,7 +252,7 @@ class WriteStack1(
   when(willput) {
     writeStack foreach {
       e =>
-        when(e.wvalid && e.wstatus === sendW  && e.entryFifoid === 0.U) {
+        when(e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U) {
           e.wstatus := waitDResp
         }
         when(e.wvalid) {
@@ -263,10 +263,10 @@ class WriteStack1(
 
   when(io.in.aw.fire && willput) {
     val entry = writeStack(idxInsert)
-    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sending || e.wstatus === sendW))) - 1.U
+    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sendPut ))) - 1.U
   }.elsewhen(io.in.aw.fire && !willput) {
     val entry = writeStack(idxInsert)
-    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sending || e.wstatus === sendW)))
+    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sendPut )))
   }
 
   when(io.in.b.fire)
@@ -343,7 +343,7 @@ class WriteStack(
     way = 1,
     singlePort = true
   ))
-  val idel::waitW::sending::sendW::waitDResp::sendB::done::Nil = Enum(7)
+  val idel::waitW::sendPut::waitDResp::sendB::Nil = Enum(5)
   val wreqArb = Module(new Arbiter(new writeEntry,entries))
   val sendBArb = Module(new Arbiter(new writeEntry,entries))
 
@@ -401,7 +401,7 @@ class WriteStack(
 
   wreqArb.io.in zip writeStack foreach{
         case(in,e) =>
-        in.valid := e.wvalid && e.wstatus === sending  && e.entryFifoid === 0.U && e.wready
+        in.valid := e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U && e.wready
         in.bits := e
   }
   val WSBIdx = wreqArb.io.chosen
@@ -420,16 +420,15 @@ class WriteStack(
 
 
    /* ======== Receive d resp and Send b resp ======== */
-  val canRecD = Cat(writeStack.map(e => e.wvalid && e.wready && e.wstatus === waitDResp)).orR
+  val canRecD = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitDResp)).orR
   val d_valid = io.out.d.fire 
   io.out.d.ready := canRecD
 
   when(d_valid)
     {
         val sourceD = io.out.d.bits.source
-        val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1,axiIdBits).asUInt 
-        
-        writeStack(wsIdx).wstatus := sendB
+        val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1,axiIdBits).asUInt
+        writeStack(wsIdx).wstatus := 4.U
         writeStack(wsIdx).d_resp := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
     }
 
@@ -443,11 +442,11 @@ class WriteStack(
       val sourceD = io.out.d.bits.source
      val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1, axiIdBits).asUInt 
    
-      writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB)) - 1.U
+      writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB))
     }
   sendBArb.io.in zip writeStack foreach{
       case(in,e) =>
-        in.valid := e.wvalid && e.wstatus === sendB && e.waitSendBRespFifoId === 0.U
+        in.valid := e.wvalid && e.wstatus === 4.U && e.waitSendBRespFifoId === 0.U
         in.bits := e
   }
 
@@ -476,7 +475,7 @@ class WriteStack(
           writeStack foreach{
             e =>
               when(e.wvalid && e.wstatus === waitW &&e.waitWFifoId === 0.U){
-                e.wstatus := sending
+                e.wstatus := sendPut
                 e.waitWFifoId := e.waitWFifoId-1.U
                 e.wready := true.B
               }.elsewhen(e.wvalid&&(e.wstatus === waitW))
@@ -495,7 +494,7 @@ class WriteStack(
   when(willput) {
     writeStack foreach {
       e =>
-        when(e.wvalid && e.wstatus === sendW  && e.entryFifoid === 0.U) {
+        when(e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U) {
           e.wstatus := waitDResp
         }
         when(e.wvalid) {
@@ -506,10 +505,10 @@ class WriteStack(
 
   when(io.in.aw.fire && willput) {
     val entry = writeStack(idxInsert)
-    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sending || e.wstatus === sendW))) - 1.U
+    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sendPut ))) - 1.U
   }.elsewhen(io.in.aw.fire && !willput) {
     val entry = writeStack(idxInsert)
-    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sending || e.wstatus === sendW)))
+    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sendPut )))
   }
 
   when(io.in.b.fire)
@@ -520,7 +519,7 @@ class WriteStack(
                 {
                   e.wvalid := false.B
                   e.wstatus := idel
-                  e.wready := false.B
+//                  e.wready := false.B
                 }
             when(e.wvalid)
               {
