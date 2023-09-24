@@ -7,11 +7,8 @@ compile:
 	mill -i AXI2TL.test.compile
 
 test-dma:
-	mill -i AXI2TL.test.runMain axi2tl.TestDMA -td build --full-stacktrace
+	mill -i AXI2TL.test.runMain axi2tl.TestDMA -td build --full-stacktrace --target verilog
 	mv build/TestDMA.v build/TestTop.v
-test-dma1:
-	mill -i AXI2TL.test.runMain axi2tl.TestDMA1 -td build --full-stacktrace
-	mv build/TestDMA1.v build/TestTop1.v
 
 clean:
 	rm -rf ./build
