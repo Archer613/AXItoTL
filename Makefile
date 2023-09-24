@@ -1,9 +1,10 @@
 init:
 	git submodule update --init
-	cd rocket-chip && git submodule update --init hardfloat api-config-chipsalliance
+	cd rocket-chip && git submodule update --init hardfloat cde
 
 compile:
 	mill -i AXI2TL.compile
+	mill -i AXI2TL.test.compile
 
 test-dma:
 	mill -i AXI2TL.test.runMain axi2tl.TestDMA -td build
