@@ -10,7 +10,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.tilelink._
 
-class AXItoTLTest(implicit p: Parameters) extends LazyModule {
+class TestDMA(implicit p: Parameters) extends LazyModule {
 
   /*   DMA
    *    |
@@ -26,11 +26,11 @@ class AXItoTLTest(implicit p: Parameters) extends LazyModule {
   )))
 
   // val xbar = TLXbar()
-  private val beatBytes = 256
+  private val beatBytes = 32
   private val tlSlaveNode = TLManagerNode(
     portParams = Seq(TLSlavePortParameters.v1(
       managers = Seq(TLSlaveParameters.v1(
-        address = Seq(AddressSet(0x00000000L, 0xfffffffffL)),
+        address = Seq(AddressSet(0x00000000L, 0x1fffffffffL)),
         resources = (new MemoryDevice).reg("mem"),
         regionType = RegionType.UNCACHED,
         executable = true,
@@ -58,7 +58,7 @@ object TestDMA extends App {
   val config = new Config((_,_,_) =>{
     case _ => None
   })
-  val top = DisableMonitors(p => LazyModule(new AXItoTLTest()(p)))(config)
+  val top = DisableMonitors(p => LazyModule(new TestDMA()(p)))(config)
 
   (new ChiselStage).execute(args, Seq(
     ChiselGeneratorAnnotation(() => top.module)
