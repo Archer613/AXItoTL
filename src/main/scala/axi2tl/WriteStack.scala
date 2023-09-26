@@ -3,34 +3,28 @@ package axi2tl
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.util._
-
-import scala.collection.immutable.Nil
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.tilelink.TLMessages._
 import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.amba.axi4._
-//import utility._
-import freechips.rocketchip.util._
-import freechips.rocketchip.util.MaskGen
 import xs.utils.sram.SRAMTemplate
 
 
 class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
-    val wvalid = Bool()
-    val wready = Bool()
-    val waddr = UInt(tlAddrBits.W)
-    val respStatus  = UInt(2.W)
-    val wstatus = UInt(3.W)
-    val entryid = UInt(axi2tlParams.ridBits.W)
-    val awid = UInt(axiIdBits.W)
-    val entryFifoid = UInt(axi2tlParams.ridBits.W)
-    val waitWFifoId = UInt(axi2tlParams.ridBits.W)
-    val wsize = UInt(tlSizeBits.W)
-    val count = UInt(axi2tlParams.ridBits.W)
-    val d_resp = UInt(2.W)
-    val size = UInt(axiSizeBits.W)
-    val len = UInt(axiLenBits.W)
-    val waitSendBRespFifoId = UInt(axi2tlParams.ridBits.W)
+  val wvalid = Bool()
+  val wready = Bool()
+  val waddr = UInt(tlAddrBits.W)
+  val respStatus = UInt(2.W)
+  val wstatus = UInt(3.W)
+  val entryid = UInt(axi2tlParams.wbufIdBits.W)
+  val awid = UInt(axiIdBits.W)
+  val entryFifoid = UInt(axi2tlParams.wbufIdBits.W)
+  val waitWFifoId = UInt(axi2tlParams.wbufIdBits.W)
+  val wsize = UInt(tlSizeBits.W)
+  val count = UInt(axi2tlParams.wbufIdBits.W)
+  val d_resp = UInt(2.W)
+  val size = UInt(axiSizeBits.W)
+  val len = UInt(axiLenBits.W)
+  val waitSendBRespFifoId = UInt(axi2tlParams.wbufIdBits.W)
 }
 class WSBlock(implicit p:Parameters) extends AXItoTLBundle {
   val data = UInt(tlDataBits.W)
@@ -182,7 +176,7 @@ class WriteStack(
   when(d_valid)
     {
         val sourceD = io.out.d.bits.source
-        val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1,axiIdBits).asUInt
+        val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1,axiIdBits).asUInt
         writeStack(wsIdx).wstatus := 4.U
         writeStack(wsIdx).d_resp := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
     }
@@ -190,12 +184,12 @@ class WriteStack(
   when(d_valid && io.in.b.fire)
     {
       val sourceD = io.out.d.bits.source
-      val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1, axiIdBits).asUInt 
+      val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1, axiIdBits).asUInt
       writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB)) - 1.U
     }.elsewhen(d_valid && !io.in.b.fire)
     {
       val sourceD = io.out.d.bits.source
-     val wsIdx = sourceD(axiIdBits + axi2tlParams.ridBits - 1, axiIdBits).asUInt 
+     val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1, axiIdBits).asUInt
    
       writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB))
     }

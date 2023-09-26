@@ -3,29 +3,24 @@ package axi2tl
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.util._
-
-import scala.collection.immutable.Nil
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.tilelink.TLMessages._
 import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.amba.axi4.{AXI4BundleAR, _}
-//import utility._
-import freechips.rocketchip.util._
 import freechips.rocketchip.util.MaskGen
 import xs.utils.sram.SRAMTemplate
 
 class readEntry(implicit p:Parameters) extends AXItoTLBundle{
-  val rvalid = Bool()
+   val rvalid = Bool()
   val rready = Bool()
   val raddress = UInt(axiAddrBits.W)
-  val entryid = UInt(axi2tlParams.ridBits.W)
+  val entryid = UInt(axi2tlParams.rbufIdBits.W)
   val arid = UInt(axiIdBits.W)
   val readStatus = UInt(3.W)
   val respStatus = UInt(4.W)
   val rsize = UInt(axiSizeBits.W)
-  val entryFifoId = UInt(axi2tlParams.fifoBits.W)
-  val BeatFifoId = UInt(axi2tlParams.fifoBits.W)
-  val RespFifoId = UInt(axi2tlParams.fifoBits.W)
+  val entryFifoId = UInt(axi2tlParams.rbufIdBits.W)
+  val BeatFifoId = UInt(axi2tlParams.rbufIdBits.W)
+  val RespFifoId = UInt(axi2tlParams.rbufIdBits.W)
 }
 
 class RSBlock(implicit p:Parameters) extends AXItoTLBundle  {
@@ -59,7 +54,7 @@ class ReadStack(entries : Int = 8
   })
 
   def mask(address: UInt, lgSize: UInt): UInt = {
-    MaskGen(address, lgSize, axi2tlParams.beatBytes)
+    MaskGen(address, lgSize, beatBytes)
   }
 
 
@@ -148,16 +143,16 @@ class ReadStack(entries : Int = 8
   when(d_valid)
   {
     val respTLId = io.out.d.bits.source
-    val respEntryId = respTLId(axiIdBits+ axi2tlParams.ridBits - 1, axiIdBits).asUInt
+    val respEntryId = respTLId(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt
     val entryResp = readStack(respEntryId)
 
     entryResp.readStatus := waitSendResp
     entryResp.respStatus := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
   }
-  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(axiIdBits+ axi2tlParams.ridBits - 1, axiIdBits).asUInt, 1.U)
+  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt, 1.U)
 
   val dataWillWrite = RegNext(d_valid,false.B)
-  val respIdx = RegNext(io.out.d.bits.source(axiIdBits+ axi2tlParams.ridBits - 1, axiIdBits).asUInt,0.U)
+  val respIdx = RegNext(io.out.d.bits.source(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt,0.U)
 
 
   when(dataWillWrite)

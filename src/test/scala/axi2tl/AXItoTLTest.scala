@@ -71,24 +71,17 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
             supportsPutPartial = TransferSizes(1, 32),
             fifoId = Some(0)
           )
-        ), 
+        ),
         32
       )
     )
   )
-  // val tlnode1 = createManagerNode("tl-node1",idBits+5)
-  // val ram = LazyModule(new TLRAM(AddressSet(0, 0xffffL), beatBytes = 32))
-  // tlnode :=
-  //   TLXbar() :=*
-  //     // TLFragmenter(8, 256) :=*
-  //     // TLCacheCork() :=*
-  //     TLDelayer(delayFactor) :=*
-  //     xbar
+
 
   val axi2tlParams = p(AXI2TLParamKey)
-  val AXItoTL = LazyModule(new AXItoTL)
+  val AXItoTL = LazyModule(new AXItoTL(16,16))
     // TLFIFOFixer() :=
-    
+
     tlnode :=
     // TLWidthWidget(32) :=
     AXItoTL.node :=
@@ -118,7 +111,7 @@ object TestDMA extends App {
   (new ChiselStage).execute(args, Seq(
     ChiselGeneratorAnnotation(() => top.module)
   ))
-
+//
   ChiselDB.init(false)
   ChiselDB.addToFileRegisters
   FileRegisters.write("./build")
