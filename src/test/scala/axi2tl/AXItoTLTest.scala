@@ -78,16 +78,9 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
     // TLFIFOFixer() :=
 
     tlnode :=
-    // TLWidthWidget(32) :=
     AXItoTL.node :=
     l3FrontendAXI4Node
-    // AXI4UserYanker(Some(16)) :=
-    // AXI4Fragmenter() :=
-    // AXI4Buffer() :=
-    // AXI4Buffer() :=
-    // AXI4IdIndexer(4) :=
-    // l3FrontendAXI4Node
-
+    
 
   val master_nodes = l3FrontendAXI4Node
   lazy val module = new LazyModuleImp(this){

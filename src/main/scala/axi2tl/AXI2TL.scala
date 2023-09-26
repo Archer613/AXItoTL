@@ -15,32 +15,70 @@ import chisel3.util._
 
 
 trait HasAXI2TLParameters {
-  val p:Parameters
+  val p: Parameters
   val axi2tlParams = p(AXI2TLParamKey)
-  val edgeIn = axi2tlParams.edgeIn
-  val edgeOut = axi2tlParams.edgeOut
-  val axiAddrBits = axi2tlParams.axiAddrBits
-  val axiSizeBits = axi2tlParams.axiSizeBits
-  val axiDataBits = axi2tlParams.axiDataBits
-  val axiIdBits = axi2tlParams.axiIdBits
-  val axiLenBits = axi2tlParams.axiLenBits
 
-  val tlAddrBits = axi2tlParams.tlAddrBits
-  val tlSizeBits = axi2tlParams.tlSizeBits
-  val tlDataBits = axi2tlParams.tlDataBits
-  val sourceBits = axi2tlParams.sourceBits
-  val sinkBits = axi2tlParams.sinkBits
-  val tlechoFields = axi2tlParams.tlechoFields
-  val tlrequestFields = axi2tlParams.tlrequestFields
-  val tlresponseFields = axi2tlParams.tlresponseFields
+  lazy val edgeIn = p(EdgeInKey)
+  lazy val edgeOut = p(EdgeOutKey)
+  lazy val beatBytes = edgeIn.bundle.dataBits / 8
+  lazy val axiAddrBits = edgeIn.bundle.addrBits
+  lazy val axiSizeBits = edgeIn.bundle.sizeBits
+  lazy val axiDataBits = edgeIn.bundle.dataBits
+  lazy val axiIdBits = edgeIn.bundle.idBits
+  lazy val axiLenBits = edgeIn.bundle.lenBits
+
+  lazy val tlAddrBits = edgeOut.bundle.addressBits
+  lazy val tlSizeBits = edgeIn.bundle.sizeBits
+  lazy val tlDataBits = edgeOut.bundle.dataBits
+  lazy val sourceBits = edgeOut.bundle.sourceBits
+  lazy val sinkBits = edgeOut.bundle.sinkBits
+  lazy val  tlechoFields = edgeOut.bundle.echoFields
+  lazy val  tlrequestFields = edgeOut.bundle.requestFields
+  lazy val  tlresponseFields = edgeOut.bundle.responseFields
 }
 
-class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyModule {
+
+case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit valName: ValName) extends MixedAdapterNode(AXI4Imp, TLImp)(
+  dFn = {  mp => TLMasterPortParameters.v1(
+      clients = mp.masters.map{m =>
+          TLMasterParameters.v1(
+            name        = s"axitotlnode",
+            sourceId    = IdRange(0, 1 << (log2Ceil(m.id.end) + Seq(log2Ceil(wbufSize), log2Ceil(rbufSize)).max+1)), // R+W ids are distinct
+            nodePath    = m.nodePath,
+            requestFifo = true
+          )
+      }
+      ,
+      echoFields    = mp.echoFields,
+      requestFields = AMBAProtField() +: mp.requestFields,
+      responseKeys  = mp.responseKeys
+      )
+  },
+  uFn = { mp => AXI4SlavePortParameters(
+    slaves = mp.managers.map { m =>
+      val maxXfer = TransferSizes(1, mp.beatBytes * (1 << AXI4Parameters.lenBits))
+      AXI4SlaveParameters(
+        address       = m.address,
+        resources     = m.resources,
+        regionType    = m.regionType,
+        executable    = m.executable,
+        nodePath      = m.nodePath,
+        supportsWrite = m.supportsPutPartial.intersect(maxXfer),
+        supportsRead  = m.supportsGet.intersect(maxXfer),
+        interleavedId = Some(0))}, // TL2 never interleaves D beats
+    beatBytes = mp.beatBytes,
+    minLatency = mp.minLatency,
+    responseFields = mp.responseFields,
+    requestKeys    = (if (wcorrupt) Seq(AMBACorrupt) else Seq()) ++ mp.requestKeys.filter(_ != AMBAProt))
+  })
+
+
+class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
   
-  val node = AXI2TLNode(wcorrupt = false, wbufSize, rbufSize)
+  val node = MyAXI4ToTLNode(false,wbufSize,rbufSize)
 
   lazy val module = new Impl
-  class Impl extends LazyModuleImp(this){
+  class Impl extends LazyModuleImp(this) {
     require(node.in.length == 1)
     require(node.out.length == 1)
     private val edgeIn = node.in.head._2
@@ -51,16 +89,23 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     println(s"AXI side:\n\tAddr Width:${axiSideParam.addrBits}\n\tData Width:${axiSideParam.dataBits}\n\tID Width:${axiSideParam.idBits}\n")
     println(s"TL side:\n\tAddr Width:${tlSideParam.addressBits}\n\tData Width:${tlSideParam.dataBits}\n\tSource Width:${tlSideParam.sourceBits}\n")
 
-    private val params = AXI2TLParam(edgeIn = edgeIn, edgeOut = edgeOut, wbufSize = wbufSize, rbufSize = rbufSize)
+    private val params = AXI2TLParam( wbufSize = wbufSize, rbufSize = rbufSize)
 
     private val writeStack = Module(new WriteStack(wbufSize)(p.alterPartial {
       case AXI2TLParamKey => params
+      case  EdgeInKey => edgeIn
+      case EdgeOutKey => edgeOut
     }))
     private val readStack = Module(new ReadStack(rbufSize)(p.alterPartial {
       case AXI2TLParamKey => params
+      case EdgeInKey => edgeIn
+      case EdgeOutKey => edgeOut
     }))
 
-    private val arbiter = Module(new Arbiter(new TLBundleA(node.out.head._2.bundle), 2))
+    val arbiter = Module(new Arbiter(new TLBundleA(node.out.head._2.bundle), 2))
+    // AXI in
+    // readStack.io.in <> node.in.head._1
+    // writeStack.io.in <> node.in.head._1
 
     readStack.io.in.ar <> node.in.head._1.ar
     readStack.io.in.r <> node.in.head._1.r
@@ -74,16 +119,18 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     arbiter.io.in(1) <> writeStack.io.out.a
     node.out.head._1.a <> arbiter.io.out
 
-    private val out = node.out.head._1
+
+
+
+    val out = node.out.head._1
    
-    // val writeStack_d  = Wire(writeStack.io.out.d)
-    // val readStack_d  = Wire(readStack.io.out.d)
 
     // val d_hasData = node.out.head._2.hasData(out.d.bits)
-    private val d_hasData = out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData || out.d.bits.opcode === TLMessages.Get
+    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData || out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
     // val d_hasData = false.B
 
-    out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
+    // out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
+    out.d.ready := readStack.io.out.d.ready || writeStack.io.out.d.ready
 
     readStack.io.out.d.valid := out.d.valid && d_hasData
     writeStack.io.out.d.valid := out.d.valid && !d_hasData
@@ -110,8 +157,8 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
 }
 object AXI2TL
 {
-  def apply(wbufSize:Int, rbufSize:Int)(implicit p: Parameters): AXI2TLNode = {
-    val axi2tl = LazyModule(new AXItoTL(wbufSize, rbufSize))
+  def apply(wbufSize:Int, rbufSize:Int)(implicit p: Parameters): MyAXI4ToTLNode = {
+    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize))
     axi2tl.node
   }
 }

@@ -11,69 +11,43 @@ import xs.utils.sram.SRAMTemplate
 
 
 
-
-class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
-  val wvalid = Bool()
-  val wready = Bool()
-  val waddr = UInt(tlAddrBits.W)
-  val respStatus = UInt(2.W)
-  val wstatus = UInt(3.W)
-  val entryid = UInt(axi2tlParams.wbufIdBits.W)
-  val awid = UInt(axiIdBits.W)
-  val entryFifoid = UInt(axi2tlParams.wbufIdBits.W)
-  val waitWFifoId = UInt(axi2tlParams.wbufIdBits.W)
-  val wsize = UInt(tlSizeBits.W)
-  val count = UInt(axi2tlParams.wbufIdBits.W)
-  val d_resp = UInt(2.W)
-  val size = UInt(axiSizeBits.W)
-  val len = UInt(axiLenBits.W)
-  val waitSendBRespFifoId = UInt(axi2tlParams.wbufIdBits.W)
-}
-class WSBlock(implicit p:Parameters) extends AXItoTLBundle {
-  val data = UInt(tlDataBits.W)
-  val mask = UInt((tlDataBits/8).W)
+class readEntry(implicit p:Parameters) extends AXItoTLBundle{
+   val rvalid = Bool()
+  val rready = Bool()
+  val raddress = UInt(axiAddrBits.W)
+  val entryid = UInt(axi2tlParams.rbufIdBits.W)
+  val arid = UInt(axiIdBits.W)
+  val readStatus = UInt(3.W)
+  val respStatus = UInt(4.W)
+  val rsize = UInt(axiSizeBits.W)
+  val entryFifoId = UInt(axi2tlParams.rbufIdBits.W)
+  val BeatFifoId = UInt(axi2tlParams.rbufIdBits.W)
+  val RespFifoId = UInt(axi2tlParams.rbufIdBits.W)
 }
 
-object WSBlock{
-  def apply()(implicit p:Parameters) = {
-    val init = WireInit(0.U.asTypeOf(new WSBlock))
-    init
-  }
-
-  def apply(data : UInt , mask : UInt)(implicit p:Parameters) = {
-    val entry = Wire(new WSBlock)
-    entry.data := data
-    entry.mask := mask
-    entry
-  }
+class RSBlock(implicit p:Parameters) extends AXItoTLBundle  {
+  val ardata = UInt(axiDataBits.W)
 }
 
-
-
-   /* ======== diplomacy ======== */
-class WriteStack(
-                entries : Int = 8,
+  /* ======== diplomacy ======== */
+class ReadStack(entries : Int = 8
 )(implicit p:Parameters) extends AXItoTLModule {
-  val io = IO(new Bundle() {
-      val in = new Bundle(){
-        val aw = Flipped(DecoupledIO(
-            new AXI4BundleAW(
-              edgeIn.bundle
-            )
-          ))
-        val w = Flipped(
-            DecoupledIO(
-              new AXI4BundleW(
-                edgeIn.bundle
-              )
-            ))
-        val b = DecoupledIO(
-            new AXI4BundleB(
-              edgeIn.bundle
-            )
+   val io = IO(new Bundle(){
+    val in =new Bundle(){
+        val ar = Flipped(
+          DecoupledIO(
+          new AXI4BundleAR(
+            edgeIn.bundle
           )
-    }
-     val out = new Bundle(){
+        )
+        )
+        val r =  DecoupledIO(
+          new AXI4BundleR(
+            edgeIn.bundle
+          )
+        )
+    } 
+    val out = new Bundle(){
         val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
         val d = Flipped(DecoupledIO(new TLBundleD(
           edgeOut.bundle
@@ -81,202 +55,202 @@ class WriteStack(
     }
   })
 
+  def mask(address: UInt, lgSize: UInt): UInt = {
+    MaskGen(address, lgSize, beatBytes)
+  }
+
+
+  def countBeat(arId: UInt, rs: Vec[readEntry]): UInt = {
+    rs.count(e => e.rvalid && e.arid === arId)
+  }
 
   /*
      Data Structure:
        readStack: store  contrl imformation
        readDataStack : store r_data
    */
-
-  val writeStack = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new writeEntry))))
-  val writeDataStack = Module(new SRAMTemplate(
-    gen = new WSBlock,
+  val readStack = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new readEntry))))
+  val readDataStack = Module(new SRAMTemplate(
+    gen = new RSBlock,
     set = entries,
-    way = 1,
+    way = 1 ,
     singlePort = true
   ))
-  val idel::waitW::sendPut::waitDResp::sendB::Nil = Enum(5)
-  val wreqArb = Module(new Arbiter(new writeEntry,entries))
-  val sendBArb = Module(new Arbiter(new writeEntry,entries))
+  val idel::waitSend::waitResp::waitSendResp::done::Nil = Enum(5)
+  val axireqArb = Module(new Arbiter(new readEntry,entries))
+  val axirespArb = Module(new Arbiter(new readEntry,entries))
 
 
-
-   
+  /* ======== Receive Ar Req and Alloc======== */
   /*
-    when aw is fire and readStack is not full,
+    when ar is fire and readStack is not full,
     alloc a entry in readStack and readDataStack.
   */
-  val full = Cat(writeStack.map(_.wvalid)).andR
-  val alloc = !full && io.in.aw.valid
-  val idxInsert = Mux(alloc,PriorityEncoder(writeStack.map(!_.wvalid)),0.U)
+  val empty = Cat(readStack.map(e => !e.rvalid && e.readStatus === idel)).orR
+  val alloc = empty && io.in.ar.valid
+  
+  val idxInsert = Mux(alloc,PriorityEncoder(readStack.map(e => !e.rvalid && e.readStatus === idel)),0.U)
+  io.in.ar.ready := empty
+  when(alloc)
+    {
+      val entry = readStack(idxInsert)
+      val r_size1 = io.in.ar.bits.bytes1()
+      val r_size = OH1ToUInt(r_size1.asUInt)
+      entry.rvalid := true.B
+      entry.entryid := idxInsert
+      entry.raddress := io.in.ar.bits.addr
+      entry.arid := io.in.ar.bits.id
+      entry.readStatus := 1.U
+      entry.rsize := r_size1
+    }
 
- 
-  //when write stack is not full,can receive aw request
-  io.in.aw.ready := !full
-  when(alloc){
-    val entry = writeStack(idxInsert)
-    entry.wvalid  := true.B
-    entry.waddr := io.in.aw.bits.addr
-    entry.wstatus := waitW
-    entry.wsize := OH1ToUInt(io.in.aw.bits.bytes1().asUInt)
-    entry.size := io.in.aw.bits.size
-    entry.len := io.in.aw.bits.len
-    entry.awid := io.in.aw.bits.id
-    entry.entryid := idxInsert
 
-  }
-
-  /* ======== Receive W Req ======== */
+  /* ======== Issue  Get Req ======== */
   /*
-        Since the W channel in AXI4 does not use wid, 
-        each time an AW task is accepted, it must wait for a w task.
-        data and mask will be stored in Sram
+      Send a get request to get the data,
+      Send sequence is fifo
   */
-  val canW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW && e.waitWFifoId === 0.U)).orR
-  val wen = io.in.w.fire
-  val wsbIdx = RegInit(0.U)
-
-  writeStack.foreach{
-    case e =>
-      when(e.wvalid && e.wstatus === waitW && e.waitWFifoId === 0.U)
-      {
-        wsbIdx := e.entryid
-      }
-  }
-  writeDataStack.io.w.apply(wen, WSBlock(io.in.w.bits.data, io.in.w.bits.strb), wsbIdx, 1.U)
-  io.in.w.ready := canW
-
- 
-
-  /* ======== Send ======== */
-  //when a entry is fire,send a put request to L3
-
-  wreqArb.io.in zip writeStack foreach{
-        case(in,e) =>
-        in.valid := e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U && e.wready
-        in.bits := e
-  }
-  val WSBIdx = wreqArb.io.chosen
-  val ren = wreqArb.io.out.valid && !wen && io.out.a.ready
-  writeDataStack.io.r.apply(ren, wreqArb.io.chosen)
-  io.out.a.valid := RegNext(wreqArb.io.out.valid && !io.in.w.fire)
-  io.out.a.bits.opcode := RegNext(TLMessages.PutPartialData)
-  io.out.a.bits.param := 0.U
-  io.out.a.bits.size := RegNext(wreqArb.io.out.bits.wsize)
-  io.out.a.bits.source := RegNext(Cat(0.asUInt,wreqArb.io.out.bits.entryid,wreqArb.io.out.bits.awid))
-  io.out.a.bits.address := RegNext( wreqArb.io.out.bits.waddr)
-  io.out.a.bits.mask := RegNext(writeDataStack.io.r.resp.data(0).mask)
-  io.out.a.bits.data := RegNext(writeDataStack.io.r.resp.data(0).data)
-  io.out.a.bits.corrupt := false.B
-  wreqArb.io.out.ready := io.out.a.ready
-
-
-   /* ======== Receive d resp and Send b resp ======== */
-  val canRecD = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitDResp)).orR
-  val d_valid = io.out.d.fire 
-  io.out.d.ready := canRecD
-
-  when(d_valid)
-    {
-        val sourceD = io.out.d.bits.source
-        val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1,axiIdBits).asUInt
-        writeStack(wsIdx).wstatus := 4.U
-        writeStack(wsIdx).d_resp := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
-    }
-
-  when(d_valid && io.in.b.fire)
-    {
-      val sourceD = io.out.d.bits.source
-      val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1, axiIdBits).asUInt
-      writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB)) - 1.U
-    }.elsewhen(d_valid && !io.in.b.fire)
-    {
-      val sourceD = io.out.d.bits.source
-     val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1, axiIdBits).asUInt
-   
-      writeStack(wsIdx).waitSendBRespFifoId := PopCount(writeStack.map(e => e.wvalid && e.wstatus === sendB))
-    }
-  sendBArb.io.in zip writeStack foreach{
+  val hasWaitTLReq = Cat(readStack.map(_.readStatus === waitSend)).orR
+  axireqArb.io.in zip readStack foreach{
       case(in,e) =>
-        in.valid := e.wvalid && e.wstatus === 4.U && e.waitSendBRespFifoId === 0.U
-        in.bits := e
-  }
 
-  val chosenBIdx = sendBArb.io.chosen
-  sendBArb.io.out.ready := io.in.b.ready
-  io.in.b.valid := sendBArb.io.out.valid
-  io.in.b.bits.id := writeStack(chosenBIdx).awid
-  io.in.b.bits.resp := writeStack(chosenBIdx).d_resp
+      in.valid := e.rvalid && (e.readStatus === waitSend) &&(e.entryFifoId === 0.U)
+      in.bits := e
+  }
+  val chosen = axireqArb.io.chosen
+  io.out.a .valid := axireqArb.io.out.valid
+  io.out.a .bits.opcode := TLMessages.Get
+  io.out.a .bits.param := 0.U
+  io.out.a .bits.size := axireqArb.io.out.bits.rsize
+  io.out.a .bits.source := Cat(1.asUInt,axireqArb.io.out.bits.entryid,axireqArb.io.out.bits.arid)
+  io.out.a .bits.address := axireqArb.io.out.bits.raddress
+  io.out.a .bits.mask := mask(axireqArb.io.out.bits.raddress,axireqArb.io.out.bits.rsize)
+  io.out.a .bits.data := 0.U
+  io.out.a .bits.corrupt := false.B
+  axireqArb.io.out.ready := io.out.a .ready
   
 
-   /* ======== Update wstatus and Fifoid ======== */
-   
-  val datawillready = RegNext(io.in.w.fire, false.B)
-  when(io.in.aw.fire && datawillready)
-      {
-        val entry = writeStack(idxInsert)
-        entry.waitWFifoId := PopCount(writeStack.map(e => e.wvalid&&(e.wstatus === waitW ))) - 1.U
-      }.elsewhen(io.in.aw.fire && !datawillready)
-      {
-        val entry = writeStack(idxInsert)
-        entry.waitWFifoId := PopCount(writeStack.map(e => e.wvalid&&(e.wstatus === waitW )))
-      }
+  /* ======== Receive  D Resp ======== */
+  /*
+      receive D Resp,store data in Sram
+  */
+  val canReceive = Cat(readStack.map(e =>e.rvalid && e.readStatus === waitResp)).orR
+  io.out.d.ready := canReceive
+  //status update shouble be delay one cycle for waiting data write in STAM
+  val d_hasData = Mux(io.out.d.bits.opcode === TLMessages.AccessAckData || io.out.d.bits.opcode === TLMessages.GrantData || io.out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
+  val d_valid = io.out.d.fire && d_hasData
+  //control sram read and write
+  val wen = d_valid
+ 
+  when(d_valid)
+  {
+    val respTLId = io.out.d.bits.source
+    val respEntryId = respTLId(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt
+    // val respEntryId = respTLId( axi2tlParams.rbufIdBits - 1, 0).asUInt
+    val entryResp = readStack(respEntryId)
 
-  when(datawillready)
+    entryResp.readStatus := waitSendResp
+    entryResp.respStatus := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
+  }
+  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt, 1.U)
+  // readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source( axi2tlParams.rbufIdBits - 1, 0).asUInt, 1.U)
+  val dataWillWrite = RegNext(d_valid,false.B)
+  val respIdx = RegNext(io.out.d.bits.source(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt,0.U)
+  // val respIdx = RegNext(io.out.d.bits.source( axi2tlParams.rbufIdBits - 1, 0).asUInt,0.U)
+
+  when(dataWillWrite)
+  {
+    readStack(respIdx).rready := true.B
+  }
+
+   /* ======== Issue AXIResp======== */
+  /*
+      chosen a fire entry , return R Resp
+      Beat with the same ID cannot be interleaved. Beat with different ids can be interleaved
+  */
+  val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.rready))
+  val proVec = priority.zip(readStack).map {
+      case(valid,e) =>
+        Mux(valid,e.RespFifoId,entries.U)
+  }
+  val max_priority_fifoid = proVec.reduceLeft(_ min _)
+
+  axirespArb.io.in zip readStack foreach{
+      case(in,e) =>
+      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid && e.rready)
+      in.bits := e
+  }
+  val ren = axirespArb.io.out.valid && !wen && io.in.r.ready
+  val chosenResp = axirespArb.io.chosen
+  val chosenResp1 = RegEnable(chosenResp,ren)
+  //need delay one cycle to wait reading data
+  val willFree = RegNext(axirespArb.io.out.valid && !wen && io.in.r.ready,false.B)
+
+  readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
+  io.in.r.valid := RegNext(axirespArb.io.out.valid && !wen)
+  io.in.r.bits.data := RegNext(readDataStack.io.r.resp.data(0).ardata)
+  io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
+  io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
+  io.in.r.bits.last := true.B
+  axirespArb.io.out.ready := io.in.r.ready
+
+  //block axirespArb waiting for data to be reading 
+  when(axirespArb.io.out.valid && !wen && io.in.r.ready)
+  {
+    readStack(chosenResp).rready := false.B
+  }
+  
+
+  /* ======== Update ReadStatus and Fifoid ======== */
+
+  when(io.in.ar.fire && io.out.a .fire)
     {
-          writeStack foreach{
-            e =>
-              when(e.wvalid && e.wstatus === waitW &&e.waitWFifoId === 0.U){
-                e.wstatus := sendPut
-                e.waitWFifoId := e.waitWFifoId-1.U
-                e.wready := true.B
-              }.elsewhen(e.wvalid&&(e.wstatus === waitW))
-              {
-                e.waitWFifoId := e.waitWFifoId-1.U
-              }
-          }
+        val entry = readStack(idxInsert)
+        // a entry status will be sending
+        entry.entryFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.readStatus === waitSend)))) - 1.U
+    }.elsewhen(io.in.ar.fire && !io.out.a .fire)
+    {
+        val entry = readStack(idxInsert)
+        entry.entryFifoId := readStack.count(e => e.rvalid && (e.readStatus === waitSend))
     }
-    
 
-    
-  val willput = RegNext(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready)
-  when(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready) {
-    writeStack(WSBIdx).wready := false.B
-  }
-  when(willput) {
-    writeStack foreach {
-      e =>
-        when(e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U) {
-          e.wstatus := waitDResp
-        }
-        when(e.wvalid) {
-          e.entryFifoid := e.entryFifoid - 1.U
-        }
-    }
-  }
-
-  when(io.in.aw.fire && willput) {
-    val entry = writeStack(idxInsert)
-    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sendPut ))) - 1.U
-  }.elsewhen(io.in.aw.fire && !willput) {
-    val entry = writeStack(idxInsert)
-    entry.entryFifoid := PopCount(writeStack.map(e => e.wvalid && (e.wstatus === waitW || e.wstatus === sendPut )))
-  }
-
-  when(io.in.b.fire)
-      {
-        writeStack.foreach{
-          case  e =>
-            when(e.wvalid && e.wstatus === sendB && e.waitSendBRespFifoId === 0.U)
-                {
-                  e.wvalid := false.B
-                  e.wstatus := idel
-//                  e.wready := false.B
-                }
-            when(e.wvalid)
-              {
-                e.waitSendBRespFifoId := e.waitSendBRespFifoId - 1.U
-              }
-        }
+  when(io.out.a .fire)
+  {
+    readStack(chosen).readStatus := waitResp
+    for (e <- readStack) {
+      when(e.readStatus === waitSend && e.rvalid) {
+        e.entryFifoId := e.entryFifoId - 1.U
       }
+    }
+  }
+
+  when( alloc && willFree)
+      {
+        val entry = readStack(idxInsert)
+        entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id)))) - 1.U
+        entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid ))) - 1.U
+      }.elsewhen( alloc && !willFree)
+      {
+          val entry = readStack(idxInsert)
+          entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id))))
+          entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid )))
+      }
+
+  when(willFree){
+      readStack(chosenResp1).rvalid := false.B
+      readStack(chosenResp1).readStatus := 0.U
+      readStack(chosenResp1).RespFifoId := (entries-1).U
+      for (e <- readStack) {
+          when(e.rvalid && e.arid === readStack(chosenResp1).arid) {
+            e.BeatFifoId := e.BeatFifoId - 1.U
+          }
+          when(e.rvalid && e.RespFifoId > readStack(chosenResp1).RespFifoId)
+          {
+              e.RespFifoId := e.RespFifoId - 1.U
+          }
+        }
+  }
+
 }
+
+
