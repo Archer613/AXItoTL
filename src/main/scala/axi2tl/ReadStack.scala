@@ -180,6 +180,7 @@ class ReadStack(entries : Int = 8
   val ren = axirespArb.io.out.valid && !wen && io.in.r.ready
   val chosenResp = axirespArb.io.chosen
   val chosenResp1 = RegEnable(chosenResp,ren)
+  val chosenResp2 = RegNext(chosenResp)
   //need delay one cycle to wait reading data
   val willFree = RegNext(axirespArb.io.out.valid && !wen && io.in.r.ready,false.B)
 
@@ -224,7 +225,7 @@ class ReadStack(entries : Int = 8
   when( alloc && willFree)
       {
         val entry = readStack(idxInsert)
-        entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id)))) - 1.U
+
         entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid ))) - 1.U
       }.elsewhen( alloc && !willFree)
       {
@@ -232,6 +233,18 @@ class ReadStack(entries : Int = 8
           entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id))))
           entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid )))
       }
+  //update BeatFifoId
+  when(alloc && willFree && io.in.ar.bits.id === readStack(chosenResp2).arid)
+    {
+      val entry = readStack(idxInsert)
+      entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id)))) - 1.U
+    }.elsewhen(alloc)
+    {
+      val entry = readStack(idxInsert)
+      entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id))))
+    }
+
+
 
   when(willFree){
       readStack(chosenResp1).rvalid := false.B
