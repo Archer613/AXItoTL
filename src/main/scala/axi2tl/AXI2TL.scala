@@ -2,14 +2,16 @@ package axi2tl
 
 import chisel3._
 import chisel3.util._
-import freechips.rocketchip.tilelink.{TLBundleA}
+import freechips.rocketchip.amba.axi4.{AXI4BundleAR, AXI4BundleAW, AXI4BundleB, AXI4BundleParameters, AXI4BundleR, AXI4BundleW}
+import freechips.rocketchip.tilelink.{TLBundleA, TLBundleD, TLBundleParameters}
 import freechips.rocketchip.amba._
-import freechips.rocketchip.config.Parameters
+import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
-
+import freechips.rocketchip.util._
 import  freechips.rocketchip.amba.axi4._
 
+import chisel3.util._
 
 
 trait HasAXI2TLParameters {
@@ -73,7 +75,7 @@ case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit
 
 class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
   
-  val node = MyAXI4ToTLNode(wcorrupt = false, wbufSize,rbufSize)
+  val node = MyAXI4ToTLNode(false,wbufSize,rbufSize)
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
@@ -100,7 +102,12 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
       case EdgeOutKey => edgeOut
     }))
 
-    val arbiter = Module(new Arbiter(new TLBundleA(node.out.head._2.bundle), 2))
+
+    val entries = 4 
+    val readStackQ  = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
+    val writeStackQ = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
+    val arbiter = Module(new 
+    (new TLBundleA(node.out.head._2.bundle), 2))
     // AXI in
     // readStack.io.in <> node.in.head._1
     // writeStack.io.in <> node.in.head._1
@@ -113,8 +120,13 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     writeStack.io.in.b <> node.in.head._1.b
 
     // TL out
-    arbiter.io.in(0) <> readStack.io.out.a
-    arbiter.io.in(1) <> writeStack.io.out.a
+    // arbiter.io.in(0) <> readStack.io.out.a
+    // arbiter.io.in(1) <> writeStack.io.out.a
+
+    readStackQ.io.enq <> readStack.io.out.a
+    writeStackQ.io.enq <> writeStack.io.out.a
+    arbiter.io.in(0) <> readStackQ.io.deq
+    arbiter.io.in(1) <> writeStackQ.io.deq
     node.out.head._1.a <> arbiter.io.out
 
 
@@ -124,7 +136,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
    
 
     // val d_hasData = node.out.head._2.hasData(out.d.bits)
-    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData || out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
+    val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData  ,true.B,false.B)
     // val d_hasData = false.B
 
     // out.d.ready := Mux(d_hasData, readStack.io.out.d.ready, writeStack.io.out.d.ready)
