@@ -74,7 +74,7 @@ case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit
 
 
 class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
-  
+
   val node = MyAXI4ToTLNode(false,wbufSize,rbufSize)
 
   lazy val module = new Impl
@@ -103,18 +103,17 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     }))
 
 
-    val entries = 4 
+    val entries = 4
     val readStackQ  = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
     val writeStackQ = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
-    val arbiter = Module(new 
-    (new TLBundleA(node.out.head._2.bundle), 2))
+    val arbiter = Module(new RRArbiter(new TLBundleA(node.out.head._2.bundle), 2))
     // AXI in
     // readStack.io.in <> node.in.head._1
     // writeStack.io.in <> node.in.head._1
 
     readStack.io.in.ar <> node.in.head._1.ar
     readStack.io.in.r <> node.in.head._1.r
-    
+
     writeStack.io.in.aw <> node.in.head._1.aw
     writeStack.io.in.w <> node.in.head._1.w
     writeStack.io.in.b <> node.in.head._1.b
@@ -133,7 +132,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
 
 
     val out = node.out.head._1
-   
+
 
     // val d_hasData = node.out.head._2.hasData(out.d.bits)
     val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData  ,true.B,false.B)
@@ -145,7 +144,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     readStack.io.out.d.valid := out.d.valid && d_hasData
     writeStack.io.out.d.valid := out.d.valid && !d_hasData
 
-    readStack.io.out.d.bits.source   := out.d.bits.source 
+    readStack.io.out.d.bits.source   := out.d.bits.source
     readStack.io.out.d.bits.data := out.d.bits.data
     readStack.io.out.d.bits.param := out.d.bits.param
     readStack.io.out.d.bits.size := out.d.bits.size
@@ -154,7 +153,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     readStack.io.out.d.bits.denied := out.d.bits.denied
     readStack.io.out.d.bits.corrupt := out.d.bits.corrupt
 
-    writeStack.io.out.d.bits.source  := out.d.bits.source 
+    writeStack.io.out.d.bits.source  := out.d.bits.source
     writeStack.io.out.d.bits.data := out.d.bits.data
     writeStack.io.out.d.bits.param := out.d.bits.param
     writeStack.io.out.d.bits.size := out.d.bits.size
