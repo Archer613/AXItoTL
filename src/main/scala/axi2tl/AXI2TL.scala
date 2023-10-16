@@ -17,7 +17,7 @@ import chisel3.util._
 trait HasAXI2TLParameters {
   val p: Parameters
   val axi2tlParams = p(AXI2TLParamKey)
-
+  val sramLatency = 2
   lazy val edgeIn = p(EdgeInKey)
   lazy val edgeOut = p(EdgeOutKey)
   lazy val beatBytes = edgeIn.bundle.dataBits / 8

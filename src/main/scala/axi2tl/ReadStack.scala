@@ -189,7 +189,7 @@ class ReadStack(entries : Int = 8
 
   readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
   io.in.r.valid := RegNext(axirespArb.io.out.valid && !wen)
-  io.in.r.bits.data := RegNext(readDataStack.io.r.resp.data(0).ardata)
+  io.in.r.bits.data := readDataStack.io.r.resp.data(0).ardata
   io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
   io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
   io.in.r.bits.last := true.B

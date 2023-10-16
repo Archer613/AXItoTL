@@ -7,7 +7,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Parameters //import utility._
 import xs.utils.sram.SRAMTemplate
-
+import xs.utils.RegNextN
 
 class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
   val wvalid = Bool()
@@ -131,7 +131,7 @@ class WriteStack(
   */
   val canW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW && e.waitWFifoId === 0.U)).orR
   val wen = io.in.w.fire
-  val wsbIdx = RegInit(0.U)
+  val wsbIdx = WireInit(0.U)
 
   writeStack.foreach{
     case e =>
@@ -153,20 +153,20 @@ class WriteStack(
         in.valid := e.wvalid && e.wstatus === sendPut  && e.entryFifoid === 0.U && e.wready
         in.bits := e
   }
-  val WSBIdx = wreqArb.io.chosen
-  val ren = wreqArb.io.out.valid && !wen && io.out.a.ready
+  val WSBIdx1 = dontTouch(wreqArb.io.chosen)
+  val ren = dontTouch(wreqArb.io.out.valid && !wen && io.out.a.ready)
+  // val rdDataRaw = RegNextN(array.io.r.resp.data(0), sramLatency - 1) // DSBlock
   writeDataStack.io.r.apply(ren, wreqArb.io.chosen)
-  io.out.a.valid := RegNext(wreqArb.io.out.valid && !io.in.w.fire)
-  io.out.a.bits.opcode := RegNext(TLMessages.PutPartialData)
+  io.out.a.valid := RegNextN(wreqArb.io.out.valid && !io.in.w.fire,sramLatency - 1)
+  io.out.a.bits.opcode := RegNextN(TLMessages.PutPartialData,sramLatency - 1)
   io.out.a.bits.param := 0.U
-  io.out.a.bits.size := RegNext(wreqArb.io.out.bits.wsize)
-  io.out.a.bits.source := RegNext(Cat(0.asUInt,wreqArb.io.out.bits.entryid,wreqArb.io.out.bits.awid))
-  io.out.a.bits.address := RegNext( wreqArb.io.out.bits.waddr)
-  io.out.a.bits.mask := RegNext(writeDataStack.io.r.resp.data(0).mask)
-  io.out.a.bits.data := RegNext(writeDataStack.io.r.resp.data(0).data)
+  io.out.a.bits.size := RegNextN(wreqArb.io.out.bits.wsize,sramLatency - 1)
+  io.out.a.bits.source := RegNextN(Cat(0.asUInt,wreqArb.io.out.bits.entryid,wreqArb.io.out.bits.awid),sramLatency - 1)
+  io.out.a.bits.address := RegNextN( wreqArb.io.out.bits.waddr,sramLatency - 1)
+  io.out.a.bits.mask :=   writeDataStack.io.r.resp.data(0).mask
+  io.out.a.bits.data :=   writeDataStack.io.r.resp.data(0).data
   io.out.a.bits.corrupt := false.B
   wreqArb.io.out.ready := io.out.a.ready
-
 
    /* ======== Receive d resp and Send b resp ======== */
   val canRecD = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitDResp)).orR
@@ -240,9 +240,9 @@ class WriteStack(
     
 
     
-  val willput = RegNext(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready)
+  val willput = RegNextN(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready,sramLatency - 1)
   when(wreqArb.io.out.valid && !io.in.w.fire && io.out.a.ready) {
-    writeStack(WSBIdx).wready := false.B
+    writeStack(WSBIdx1).wready := false.B
   }
   when(willput) {
     writeStack foreach {
