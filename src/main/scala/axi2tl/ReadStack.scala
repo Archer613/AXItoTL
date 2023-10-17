@@ -102,6 +102,7 @@ class ReadStack(entries : Int = 8
       entry.arid := io.in.ar.bits.id
       entry.readStatus := 1.U
       entry.rsize := r_size1
+      assert(r_size1 <= log2Ceil(log2Ceil(tlDataBits)).asUInt,"AXItoTL : rsize is too long")
     }
 
 
@@ -137,7 +138,7 @@ class ReadStack(entries : Int = 8
   val canReceive = Cat(readStack.map(e =>e.rvalid && e.readStatus === waitResp)).orR
   io.out.d.ready := canReceive
   //status update shouble be delay one cycle for waiting data write in STAM
-  val d_hasData = Mux(io.out.d.bits.opcode === TLMessages.AccessAckData || io.out.d.bits.opcode === TLMessages.GrantData || io.out.d.bits.opcode === TLMessages.Get ,true.B,false.B)
+  val d_hasData = Mux(io.out.d.bits.opcode === TLMessages.AccessAckData || io.out.d.bits.opcode === TLMessages.GrantData  ,true.B,false.B)
   val d_valid = io.out.d.fire && d_hasData
   //control sram read and write
   val wen = d_valid

@@ -156,6 +156,11 @@ class WriteStack(
   val WSBIdx1 = dontTouch(wreqArb.io.chosen)
   val ren = dontTouch(wreqArb.io.out.valid && !wen && io.out.a.ready)
   // val rdDataRaw = RegNextN(array.io.r.resp.data(0), sramLatency - 1) // DSBlock
+  val write_data = writeDataStack.io.r.resp.data(0).data
+  val write_mask = writeDataStack.io.r.resp.data(0).mask
+  val write_size = RegNextN(wreqArb.io.out.bits.wsize,sramLatency - 1)
+  val mask_bits = PopCount(write_mask)
+  assert(mask_bits <= write_size,"AXItoTL: write data is too much")
   writeDataStack.io.r.apply(ren, wreqArb.io.chosen)
   io.out.a.valid := RegNextN(wreqArb.io.out.valid && !io.in.w.fire,sramLatency - 1)
   io.out.a.bits.opcode := RegNextN(TLMessages.PutPartialData,sramLatency - 1)
@@ -163,7 +168,7 @@ class WriteStack(
   io.out.a.bits.size := RegNextN(wreqArb.io.out.bits.wsize,sramLatency - 1)
   io.out.a.bits.source := RegNextN(Cat(0.asUInt,wreqArb.io.out.bits.entryid,wreqArb.io.out.bits.awid),sramLatency - 1)
   io.out.a.bits.address := RegNextN( wreqArb.io.out.bits.waddr,sramLatency - 1)
-  io.out.a.bits.mask :=   writeDataStack.io.r.resp.data(0).mask
+  io.out.a.bits.mask :=    writeDataStack.io.r.resp.data(0).mask
   io.out.a.bits.data :=   writeDataStack.io.r.resp.data(0).data
   io.out.a.bits.corrupt := false.B
   wreqArb.io.out.ready := io.out.a.ready
