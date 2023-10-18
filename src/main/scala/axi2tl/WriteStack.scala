@@ -159,8 +159,9 @@ class WriteStack(
   val write_data = writeDataStack.io.r.resp.data(0).data
   val write_mask = writeDataStack.io.r.resp.data(0).mask
   val write_size = RegNextN(wreqArb.io.out.bits.wsize,sramLatency - 1)
-  val mask_bits = PopCount(write_mask)
-  assert(mask_bits <= (1.U << write_size),"AXItoTL: write data is too much")
+  val mask_bits = dontTouch(PopCount(write_mask))
+  val write_bits = dontTouch(1.U << io.out.a.bits.size)
+  assert((mask_bits <= write_bits && io.out.a.fire) || !io.out.a.fire,"AXItoTL: write bits is too much")
   writeDataStack.io.r.apply(ren, wreqArb.io.chosen)
   io.out.a.valid := RegNextN(wreqArb.io.out.valid && !io.in.w.fire,sramLatency - 1)
   io.out.a.bits.opcode := RegNextN(TLMessages.PutPartialData,sramLatency - 1)
