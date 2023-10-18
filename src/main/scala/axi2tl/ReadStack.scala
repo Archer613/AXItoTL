@@ -102,7 +102,7 @@ class ReadStack(entries : Int = 8
       entry.arid := io.in.ar.bits.id
       entry.readStatus := 1.U
       entry.rsize := r_size
-      assert(r_size1 <= log2Ceil(log2Ceil(tlDataBits)).asUInt,"AXItoTL : rsize is too long")
+      assert( (r_size1 <= log2Ceil(log2Ceil(tlDataBits)).asUInt && alloc) || !alloc,"AXItoTL : rsize is too long")
     }
 
 
