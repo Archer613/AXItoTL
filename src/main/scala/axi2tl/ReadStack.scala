@@ -149,8 +149,6 @@ class ReadStack(entries : Int = 8
     val respEntryId = respTLId(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt
     // val respEntryId = respTLId( axi2tlParams.rbufIdBits - 1, 0).asUInt
     val entryResp = readStack(respEntryId)
-
-    entryResp.readStatus := waitSendResp
     entryResp.respStatus := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
   }
   readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(axiIdBits+ axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt, 1.U)
@@ -161,6 +159,7 @@ class ReadStack(entries : Int = 8
 
   when(dataWillWrite)
   {
+    readStack(respIdx).readStatus := waitSendResp
     readStack(respIdx).rready := true.B
   }
 
@@ -169,7 +168,7 @@ class ReadStack(entries : Int = 8
       chosen a fire entry , return R Resp
       Beat with the same ID cannot be interleaved. Beat with different ids can be interleaved
   */
-  val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.rready))
+  val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U ))
   val proVec = priority.zip(readStack).map {
       case(valid,e) =>
         Mux(valid,e.RespFifoId,entries.U)
@@ -185,7 +184,7 @@ class ReadStack(entries : Int = 8
   val chosenResp = axirespArb.io.chosen
   val chosenResp1 = RegEnable(chosenResp,ren)
   //need delay one cycle to wait reading data
-  val willFree = RegNext(io.in.r.fire,false.B)
+  val willFree = io.in.r.fire
 
   readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
   io.in.r.valid := RegNext(ren)
@@ -196,10 +195,10 @@ class ReadStack(entries : Int = 8
   axirespArb.io.out.ready := io.in.r.ready
 
   //block axirespArb waiting for data to be reading 
-  when(axirespArb.io.out.valid && !wen && io.in.r.ready)
-  {
-    readStack(chosenResp).rready := false.B
-  }
+  // when(axirespArb.io.out.valid && !wen && io.in.r.ready)
+  // {
+  //   readStack(chosenResp).rready := false.B
+  // }
   
 
   /* ======== Update ReadStatus and Fifoid ======== */
@@ -251,6 +250,7 @@ class ReadStack(entries : Int = 8
       readStack(chosenResp1).rvalid := false.B
       readStack(chosenResp1).readStatus := 0.U
       readStack(chosenResp1).RespFifoId := (entries-1).U
+      readStack(chosenResp1).rready := false.B
       for (e <- readStack) {
           when(e.rvalid && e.arid === readStack(chosenResp1).arid) {
             e.BeatFifoId := e.BeatFifoId - 1.U
