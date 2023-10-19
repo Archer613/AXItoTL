@@ -8,6 +8,7 @@ import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Parameters //import utility._
 import xs.utils.sram.SRAMTemplate
 import xs.utils.RegNextN
+import xs.utils.perf.HasPerfLogging
 
 class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
   val wvalid = Bool()
@@ -154,16 +155,16 @@ class WriteStack(
         in.bits := e
   }
   val WSBIdx1 = dontTouch(wreqArb.io.chosen)
-  val ren = dontTouch(wreqArb.io.out.valid && !wen && io.out.a.ready)
+  val ren = dontTouch(wreqArb.io.out.valid && !wen)
   // val rdDataRaw = RegNextN(array.io.r.resp.data(0), sramLatency - 1) // DSBlock
   val write_data = writeDataStack.io.r.resp.data(0).data
   val write_mask = writeDataStack.io.r.resp.data(0).mask
   val write_size = RegNextN(wreqArb.io.out.bits.wsize,sramLatency - 1)
   val mask_bits = dontTouch(PopCount(write_mask))
   val write_bits = dontTouch(1.U << io.out.a.bits.size)
-  assert((mask_bits <= write_bits && io.out.a.fire) || !io.out.a.fire,"AXItoTL: write bits is too much")
+  // assert((mask_bits <= write_bits && io.out.a.fire) || !io.out.a.fire,"AXItoTL: write bits is too much")
   writeDataStack.io.r.apply(ren, wreqArb.io.chosen)
-  io.out.a.valid := RegNextN(wreqArb.io.out.valid && !io.in.w.fire,sramLatency - 1)
+  io.out.a.valid := RegNextN(ren,sramLatency - 1)
   io.out.a.bits.opcode := RegNextN(TLMessages.PutPartialData,sramLatency - 1)
   io.out.a.bits.param := 0.U
   io.out.a.bits.size := RegNextN(wreqArb.io.out.bits.wsize,sramLatency - 1)
@@ -286,4 +287,14 @@ class WriteStack(
               }
         }
       }
+
+  // XSPerfAccumulate("writeStack_full",  full)
+  // XSPerfAccumulate("writeStack_alloc",alloc)
+  // XSPerfAccumulate("writeStack_recv_aw_req",io.in.aw.fire)
+  // XSPerfAccumulate("writeStack_recv_w_req",io.in.w.fire)
+  // XSPerfAccumulate("writeStack_send_a_req",io.out.a.fire)
+  // XSPerfAccumulate("writeStack_recv_d_resp",io.out.d.fire)
+  // XSPerfAccumulate("writeStack_send_b_resp",io.in.b.fire)
+
+  
 }

@@ -8,7 +8,7 @@ import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Parameters //import utility._
 import freechips.rocketchip.util.MaskGen
 import xs.utils.sram.SRAMTemplate
-
+import xs.utils.perf._
 
 
 class readEntry(implicit p:Parameters) extends AXItoTLBundle{
@@ -102,8 +102,7 @@ class ReadStack(entries : Int = 8
       entry.arid := io.in.ar.bits.id
       entry.readStatus := 1.U
       entry.rsize := r_size
-      assert( (r_size <= log2Ceil(log2Ceil(tlDataBits)).asUInt && alloc) || !alloc,"AXItoTL : rsize is too long")
-    
+      assert( (r_size <= log2Ceil(tlDataBits/8).asUInt && alloc) || !alloc,"AXItoTL : rsize is too long")
     }
 
 
@@ -182,15 +181,14 @@ class ReadStack(entries : Int = 8
       in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid && e.rready)
       in.bits := e
   }
-  val ren = axirespArb.io.out.valid && !wen && io.in.r.ready
+  val ren = axirespArb.io.out.valid && !wen 
   val chosenResp = axirespArb.io.chosen
   val chosenResp1 = RegEnable(chosenResp,ren)
-  val chosenResp2 = RegNext(chosenResp)
   //need delay one cycle to wait reading data
-  val willFree = RegNext(axirespArb.io.out.valid && !wen && io.in.r.ready,false.B)
+  val willFree = RegNext(io.in.r.fire,false.B)
 
   readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
-  io.in.r.valid := RegNext(axirespArb.io.out.valid && !wen)
+  io.in.r.valid := RegNext(ren)
   io.in.r.bits.data := readDataStack.io.r.resp.data(0).ardata
   io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
   io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
@@ -239,7 +237,7 @@ class ReadStack(entries : Int = 8
           entry.RespFifoId := PopCount(Cat(readStack.map(e => e.rvalid )))
       }
   //update BeatFifoId
-  when(alloc && willFree && io.in.ar.bits.id === readStack(chosenResp2).arid)
+  when(alloc && willFree && io.in.ar.bits.id === readStack(chosenResp1).arid)
     {
       val entry = readStack(idxInsert)
       entry.BeatFifoId := PopCount(Cat(readStack.map(e => e.rvalid && (e.arid === io.in.ar.bits.id)))) - 1.U
@@ -263,6 +261,14 @@ class ReadStack(entries : Int = 8
           }
         }
   }
+
+  // XSPerfAccumulate("readStack_full",  full)
+  // XSPerfAccumulate("readStack_alloc",alloc)
+  // XSPerfAccumulate("writeStack_recv_AR_req",io.in.ar.fire)
+  // XSPerfAccumulate("writeStack_send_a_req",io.out.a.fire)
+  // XSPerfAccumulate("writeStack_recv_d_resp",io.out.d.fire)
+  // XSPerfAccumulate("writeStack_send_r_resp",io.in.r.fire)
+
 
 }
 
