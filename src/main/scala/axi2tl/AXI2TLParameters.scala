@@ -17,6 +17,8 @@ case class AXI2TLParam(
 //  edgeIn: AXI4EdgeParameters,
 //  edgeOut: TLEdgeOut,
   wbufSize:Int =16,
+  // Performance analysis
+  enablePerf: Boolean = false,
   rbufSize:Int = 16){
   val rbufIdBits:Int = log2Ceil(wbufSize)
   val wbufIdBits:Int = log2Ceil(rbufSize)

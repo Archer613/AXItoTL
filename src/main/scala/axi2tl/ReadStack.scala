@@ -8,7 +8,7 @@ import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Parameters //import utility._
 import freechips.rocketchip.util.MaskGen
 import xs.utils.sram.SRAMTemplate
-
+import xs.utils.perf.HasPerfLogging
 
 
 class readEntry(implicit p:Parameters) extends AXItoTLBundle{
@@ -31,7 +31,7 @@ class RSBlock(implicit p:Parameters) extends AXItoTLBundle  {
 
   /* ======== diplomacy ======== */
 class ReadStack(entries : Int = 8
-)(implicit p:Parameters) extends AXItoTLModule {
+)(implicit p:Parameters) extends AXItoTLModule with HasPerfLogging {
    val io = IO(new Bundle(){
     val in =new Bundle(){
         val ar = Flipped(
@@ -263,6 +263,9 @@ class ReadStack(entries : Int = 8
         }
   }
 
+  if(axi2tlParams.enablePerf){
+    XSPerfAccumulate("Test", willFree)
+  }
 }
 
 
