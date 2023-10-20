@@ -180,25 +180,38 @@ class ReadStack(entries : Int = 8
       in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid && e.rready)
       in.bits := e
   }
-  val ren = axirespArb.io.out.valid && !wen 
+
+  val bloackReadData = RegInit(false.B)
+  val ren = axirespArb.io.out.valid && !wen && !bloackReadData
   val chosenResp = axirespArb.io.chosen
   val chosenResp1 = RegEnable(chosenResp,ren)
   //need delay one cycle to wait reading data
   val willFree = io.in.r.fire
-
+  
+  val resp_entry = readStack(chosenResp1)
+  val resp_data = readDataStack.io.r.resp.data(0).ardata
+  val can_send_rresp = bloackReadData
   readDataStack.io.r.apply(ren,axirespArb.io.out.bits.entryid)
-  io.in.r.valid := RegNext(ren)
-  io.in.r.bits.data := readDataStack.io.r.resp.data(0).ardata
-  io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
-  io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
+  // io.in.r.valid := RegNext(ren)
+  // io.in.r.bits.data := readDataStack.io.r.resp.data(0).ardata
+  // io.in.r.bits.id := RegNext(axirespArb.io.out.bits.arid)
+  // io.in.r.bits.resp := RegNext(axirespArb.io.out.bits.respStatus)
+  // io.in.r.bits.last := true.B
+  io.in.r.valid := can_send_rresp
+  io.in.r.bits.data := resp_data
+  io.in.r.bits.id := resp_entry.arid
+  io.in.r.bits.resp := resp_entry.respStatus
   io.in.r.bits.last := true.B
   axirespArb.io.out.ready := io.in.r.ready
 
   //block axirespArb waiting for data to be reading 
-  // when(axirespArb.io.out.valid && !wen && io.in.r.ready)
-  // {
-  //   readStack(chosenResp).rready := false.B
-  // }
+  when(ren)
+  {
+    bloackReadData := true.B
+  }.elsewhen(io.in.r.fire)
+  {
+    bloackReadData := false.B
+  }
   
 
   /* ======== Update ReadStatus and Fifoid ======== */
@@ -250,7 +263,7 @@ class ReadStack(entries : Int = 8
       readStack(chosenResp1).rvalid := false.B
       readStack(chosenResp1).readStatus := 0.U
       readStack(chosenResp1).RespFifoId := (entries-1).U
-      readStack(chosenResp1).rready := false.B
+      // readStack(chosenResp1).rready := false.B
       for (e <- readStack) {
           when(e.rvalid && e.arid === readStack(chosenResp1).arid) {
             e.BeatFifoId := e.BeatFifoId - 1.U
