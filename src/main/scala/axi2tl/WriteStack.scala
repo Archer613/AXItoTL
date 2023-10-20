@@ -27,7 +27,7 @@ class writeEntry(implicit p:Parameters) extends AXItoTLBundle {
   val len = UInt(axiLenBits.W)
   val waitSendBRespFifoId = UInt(axi2tlParams.wbufIdBits.W)
 }
-class WSBlock(implicit p:Parameters) extends AXItoTLBundle {
+class WSBlock(implicit p:Parameters) extends AXItoTLBundle  {
   val data = UInt(tlDataBits.W)
   val mask = UInt((tlDataBits/8).W)
 }
@@ -51,7 +51,7 @@ object WSBlock{
    /* ======== diplomacy ======== */
 class WriteStack(
                 entries : Int = 8,
-)(implicit p:Parameters) extends AXItoTLModule {
+)(implicit p:Parameters) extends AXItoTLModule with HasPerfLogging {
   val io = IO(new Bundle() {
       val in = new Bundle(){
         val aw = Flipped(DecoupledIO(
@@ -287,14 +287,16 @@ class WriteStack(
               }
         }
       }
+     if(axi2tlParams.enablePerf){
+          XSPerfAccumulate("writeStack_full",  full)
+          XSPerfAccumulate("writeStack_alloc",alloc)
+          XSPerfAccumulate("writeStack_recv_aw_req",io.in.aw.fire)
+          XSPerfAccumulate("writeStack_recv_w_req",io.in.w.fire)
+          XSPerfAccumulate("writeStack_send_a_req",io.out.a.fire)
+          XSPerfAccumulate("writeStack_recv_d_resp",io.out.d.fire)
+          XSPerfAccumulate("writeStack_send_b_resp",io.in.b.fire)
+     }
 
-  // XSPerfAccumulate("writeStack_full",  full)
-  // XSPerfAccumulate("writeStack_alloc",alloc)
-  // XSPerfAccumulate("writeStack_recv_aw_req",io.in.aw.fire)
-  // XSPerfAccumulate("writeStack_recv_w_req",io.in.w.fire)
-  // XSPerfAccumulate("writeStack_send_a_req",io.out.a.fire)
-  // XSPerfAccumulate("writeStack_recv_d_resp",io.out.d.fire)
-  // XSPerfAccumulate("writeStack_send_b_resp",io.in.b.fire)
 
   
 }

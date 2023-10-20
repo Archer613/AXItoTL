@@ -23,6 +23,7 @@ class readEntry(implicit p:Parameters) extends AXItoTLBundle{
   val entryFifoId = UInt(axi2tlParams.rbufIdBits.W)
   val BeatFifoId = UInt(axi2tlParams.rbufIdBits.W)
   val RespFifoId = UInt(axi2tlParams.rbufIdBits.W)
+  val sourceId = UInt(sourceBits.W)
 }
 
 class RSBlock(implicit p:Parameters) extends AXItoTLBundle  {
@@ -102,6 +103,7 @@ class ReadStack(entries : Int = 8
       entry.arid := io.in.ar.bits.id
       entry.readStatus := 1.U
       entry.rsize := r_size
+      entry.sourceId := Cat(1.asUInt,idxInsert,io.in.ar.bits.id)
       assert( (r_size <= log2Ceil(tlDataBits/8).asUInt && alloc) || !alloc,"AXItoTL : rsize is too long")
     }
 
@@ -263,6 +265,7 @@ class ReadStack(entries : Int = 8
       readStack(chosenResp1).rvalid := false.B
       readStack(chosenResp1).readStatus := 0.U
       readStack(chosenResp1).RespFifoId := (entries-1).U
+      readStack(chosenResp1).sourceId := 0.U
       // readStack(chosenResp1).rready := false.B
       for (e <- readStack) {
           when(e.rvalid && e.arid === readStack(chosenResp1).arid) {
@@ -275,9 +278,14 @@ class ReadStack(entries : Int = 8
         }
   }
 
-  // if(axi2tlParams.enablePerf){
-  //   XSPerfAccumulate("Test", willFree)
-  // }
+if(axi2tlParams.enablePerf){
+          XSPerfAccumulate("readStack_empty",  empty)
+          XSPerfAccumulate("readStack_alloc",alloc)
+          XSPerfAccumulate("readStack_recv_ar_req",io.in.ar.fire)
+          XSPerfAccumulate("readStack_send_a_req",io.out.a.fire)
+          XSPerfAccumulate("readStack_recv_d_resp",io.out.d.fire)
+          XSPerfAccumulate("readStack_send_r_resp",io.in.r.fire)
+     }
 }
 
 
