@@ -171,20 +171,30 @@ class ReadStack(entries : Int = 8
       Beat with the same ID cannot be interleaved. Beat with different ids can be interleaved
   */
   val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U ))
+  
   val proVec = priority.zip(readStack).map {
       case(valid,e) =>
         Mux(valid,e.RespFifoId,entries.U)
   }
-  val max_priority_fifoid = proVec.reduceLeft(_ min _)
+  val priority_valid = Cat(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U )).orR
+
+  val proVec_1 = RegNext(VecInit(proVec))
+  val priority_valid_1 = RegNext(priority_valid,false.B)
+
+  val max_priority_fifoid_valid = priority_valid_1
+  val max_priority_fifoid = proVec_1.reduceLeft(_ min _)
+
+  val max_priority_fifoid_1_valid = RegNext(max_priority_fifoid_valid)
+  val max_priority_fifoid_1 = RegNext(max_priority_fifoid)
 
   axirespArb.io.in zip readStack foreach{
       case(in,e) =>
-      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid && e.rready)
+      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid_1 && e.rready) && max_priority_fifoid_1_valid
       in.bits := e
   }
 
   val bloackReadData = RegInit(false.B)
-  val ren = axirespArb.io.out.valid && !wen && !bloackReadData
+  val ren = axirespArb.io.out.valid && !wen && !bloackReadData && max_priority_fifoid_1_valid
   val chosenResp = axirespArb.io.chosen
   val chosenResp1 = RegEnable(chosenResp,ren)
   //need delay one cycle to wait reading data
