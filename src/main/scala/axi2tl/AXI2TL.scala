@@ -110,26 +110,28 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     // AXI in
     // readStack.io.in <> node.in.head._1
     // writeStack.io.in <> node.in.head._1
-
-    readStack.io.in.ar <> node.in.head._1.ar
+    val innerAxiBuf = axi2tlParams.innerAXI4Buf
+    innerAxiBuf.ar(readStack.io.in.ar) <> node.in.head._1.ar
     readStack.io.in.r <> node.in.head._1.r
-    
-    writeStack.io.in.aw <> node.in.head._1.aw
-    writeStack.io.in.w <> node.in.head._1.w
-    writeStack.io.in.b <> node.in.head._1.b
 
+    innerAxiBuf.aw(writeStack.io.in.aw) <> node.in.head._1.aw
+    innerAxiBuf.w(writeStack.io.in.w) <> node.in.head._1.w
+    writeStack.io.in.b <> node.in.head._1.b
+//    readStack.io.in.ar <> node.in.head._1.ar
+//    readStack.io.in.r <> node.in.head._1.r
+//
+//    writeStack.io.in.aw <> node.in.head._1.aw
+//    writeStack.io.in.w <> node.in.head._1.w
+//    writeStack.io.in.b <> node.in.head._1.b
     // TL out
     // arbiter.io.in(0) <> readStack.io.out.a
     // arbiter.io.in(1) <> writeStack.io.out.a
-
-    readStackQ.io.enq <> readStack.io.out.a
+    val outTlBuf = axi2tlParams.outerTLBuf
+    readStackQ.io.enq <> outTlBuf.a(readStack.io.out.a)
     writeStackQ.io.enq <> writeStack.io.out.a
     arbiter.io.in(0) <> readStackQ.io.deq
     arbiter.io.in(1) <> writeStackQ.io.deq
     node.out.head._1.a <> arbiter.io.out
-
-
-
 
     val out = node.out.head._1
    
