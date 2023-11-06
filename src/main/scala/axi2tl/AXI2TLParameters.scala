@@ -20,6 +20,8 @@ case class AXI2TLParam(
   // Performance analysis
   enablePerf: Boolean = false,
   rbufSize:Int = 16,
+  hasMbist:Boolean = false,
+  hasShareBus:Boolean = false,
   innerTLBuf: TLBufferParams = TLBufferParams(),
   outerTLBuf: TLBufferParams = TLBufferParams(
     a = BufferParams.default,

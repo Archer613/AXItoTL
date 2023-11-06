@@ -9,9 +9,9 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
-import  freechips.rocketchip.amba.axi4._
-
+import freechips.rocketchip.amba.axi4._
 import chisel3.util._
+import xs.utils.mbist.MBISTPipeline
 
 
 trait HasAXI2TLParameters {
@@ -73,7 +73,7 @@ case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit
   })
 
 
-class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
+class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean)(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
   
   val node = MyAXI4ToTLNode(false,wbufSize,rbufSize)
 
@@ -89,11 +89,11 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     println(s"AXI side:\n\tAddr Width:${axiSideParam.addrBits}\n\tData Width:${axiSideParam.dataBits}\n\tID Width:${axiSideParam.idBits}\n")
     println(s"TL side:\n\tAddr Width:${tlSideParam.addressBits}\n\tData Width:${tlSideParam.dataBits}\n\tSource Width:${tlSideParam.sourceBits}\n")
 
-    private val params = AXI2TLParam( wbufSize = wbufSize, rbufSize = rbufSize)
+    private val params = AXI2TLParam(wbufSize = wbufSize, rbufSize = rbufSize, hasShareBus = sharebus, hasMbist = mbist)
 
     private val writeStack = Module(new WriteStack(wbufSize)(p.alterPartial {
       case AXI2TLParamKey => params
-      case  EdgeInKey => edgeIn
+      case EdgeInKey => edgeIn
       case EdgeOutKey => edgeOut
     }))
     private val readStack = Module(new ReadStack(rbufSize)(p.alterPartial {
@@ -103,10 +103,12 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     }))
 
 
-    val entries = 4 
+    val entries = 4
     val readStackQ  = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
     val writeStackQ = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
     val arbiter = Module(new RRArbiter(new TLBundleA(node.out.head._2.bundle), 2))
+    val mbistPipeline = MBISTPipeline.PlaceMbistPipeline(3,
+      s"MBIST_AXI2TL_TOP_", sharebus & mbist)
     // AXI in
     // readStack.io.in <> node.in.head._1
     // writeStack.io.in <> node.in.head._1
@@ -146,7 +148,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     readStack.io.out.d.valid := out.d.valid && d_hasData
     writeStack.io.out.d.valid := out.d.valid && !d_hasData
 
-    readStack.io.out.d.bits.source   := out.d.bits.source 
+    readStack.io.out.d.bits.source   := out.d.bits.source
     readStack.io.out.d.bits.data := out.d.bits.data
     readStack.io.out.d.bits.param := out.d.bits.param
     readStack.io.out.d.bits.size := out.d.bits.size
@@ -155,7 +157,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
     readStack.io.out.d.bits.denied := out.d.bits.denied
     readStack.io.out.d.bits.corrupt := out.d.bits.corrupt
 
-    writeStack.io.out.d.bits.source  := out.d.bits.source 
+    writeStack.io.out.d.bits.source  := out.d.bits.source
     writeStack.io.out.d.bits.data := out.d.bits.data
     writeStack.io.out.d.bits.param := out.d.bits.param
     writeStack.io.out.d.bits.size := out.d.bits.size
@@ -168,8 +170,8 @@ class AXItoTL(wbufSize:Int, rbufSize:Int)(implicit p: Parameters) extends LazyMo
 }
 object AXI2TL
 {
-  def apply(wbufSize:Int, rbufSize:Int)(implicit p: Parameters): MyAXI4ToTLNode = {
-    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize))
+  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, sharebus:Boolean = false)(implicit p: Parameters): MyAXI4ToTLNode = {
+    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize, mbist, sharebus))
     axi2tl.node
   }
 }
