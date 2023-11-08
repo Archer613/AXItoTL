@@ -9,8 +9,7 @@ import xs.utils.{ChiselDB, FileRegisters}
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.tilelink._
-
-
+import xs.utils.perf.{DebugOptions,DebugOptionsKey}
 
 class TestDMA()(implicit p: Parameters) extends LazyModule {
 
@@ -74,7 +73,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
 
 
   val axi2tlParams = p(AXI2TLParamKey)
-  val AXItoTL = LazyModule(new AXItoTL(16,16))
+  val AXItoTL = LazyModule(new AXItoTL(16,16,false,false))
     // TLFIFOFixer() :=
 
     tlnode :=
@@ -93,6 +92,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
 object TestDMA extends App {
   val config = new Config((_, _, _) => {
     case AXI2TLParamKey => AXI2TLParam()
+    case DebugOptionsKey => DebugOptions()
   })
   val top = DisableMonitors(p => LazyModule(new TestDMA()(p)) )(config)
 
