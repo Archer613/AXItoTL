@@ -12,7 +12,7 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.amba.axi4._
 import chisel3.util._
 import xs.utils.mbist.MBISTPipeline
-
+import xs.utils.RRArbiterInit
 
 trait HasAXI2TLParameters {
   val p: Parameters
