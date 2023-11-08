@@ -106,7 +106,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean)(impli
     val entries = 4
     val readStackQ  = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
     val writeStackQ = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
-    val arbiter = Module(new RRArbiter(new TLBundleA(node.out.head._2.bundle), 2))
+    val arbiter = Module(new RRArbiterInit(new TLBundleA(node.out.head._2.bundle), 2))
     val mbistPipeline = MBISTPipeline.PlaceMbistPipeline(3,
       s"MBIST_AXI2TL_TOP_", sharebus & mbist)
     // AXI in
