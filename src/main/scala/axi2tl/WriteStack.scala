@@ -186,7 +186,7 @@ class WriteStack(
     val sourceD = io.out.d.bits.source
     val wsIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1, axiIdBits).asUInt
     // val wsIdx = sourceD(axi2tlParams.wbufIdBits - 1,0).asUInt
-    writeStack(wsIdx).wstatus := 4.U
+    writeStack(wsIdx).wstatus := sendB
     writeStack(wsIdx).d_resp := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
   }
 
@@ -205,7 +205,7 @@ class WriteStack(
   }
   sendBArb.io.in zip writeStack foreach {
     case (in, e) =>
-      in.valid := e.wvalid && e.wstatus === 4.U && e.waitSendBRespFifoId === 0.U
+      in.valid := e.wvalid && e.wstatus === sendB && e.waitSendBRespFifoId === 0.U
       in.bits := e
   }
 
@@ -268,9 +268,10 @@ class WriteStack(
       when(e.wvalid && e.wstatus === sendB && e.waitSendBRespFifoId === 0.U) {
         e.wvalid := false.B
         e.wstatus := idel
+        e.waitSendBRespFifoId := (entries-1).U
         //                  e.wready := false.B
       }
-      when(e.wvalid) {
+      when(e.wvalid && e.wstatus === sendB) {
         e.waitSendBRespFifoId := e.waitSendBRespFifoId - 1.U
       }
     }
