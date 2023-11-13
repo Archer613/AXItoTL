@@ -119,12 +119,13 @@ class WriteStack(
     alloc a entry in readStack and readDataStack.
    */
   val full = Cat(writeStack.map(_.wvalid)).andR
-  val alloc = !full && io.in.aw.valid
+  val hasWaitW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW)).orR
+  val alloc = !full && !hasWaitW
   val idxInsert = Mux(alloc, PriorityEncoder(writeStack.map(!_.wvalid)), 0.U)
-
+  
   //when write stack is not full,can receive aw request
-  io.in.aw.ready := !full
-  when(alloc) {
+  io.in.aw.ready := !full && !hasWaitW
+  when(alloc && io.in.aw.fire) {
     val entry = writeStack(idxInsert)
     entry.wvalid := true.B
     entry.waddr := io.in.aw.bits.addr
@@ -143,17 +144,18 @@ class WriteStack(
         each time an AW task is accepted, it must wait for a w task.
         data and mask will be stored in Sram
    */
-  val canW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW && e.waitWFifoId === 0.U)).orR
+  val wFire = io.in.w.fire
+  val canW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW && RegNext(!wFire,false.B) && e.waitWFifoId === 0.U)).orR
   val wen = io.in.w.fire
   val wsbIdx =dontTouch(WireInit(0.U))
-    
+  io.in.w.ready := canW
   writeStack.foreach { e =>
     when(e.wvalid && e.wstatus === waitW && e.waitWFifoId === 0.U) {
       wsbIdx := e.entryid
     }
   }
   writeDataStack.io.w.apply(wen, WSBlock(io.in.w.bits.data, io.in.w.bits.strb), wsbIdx, 1.U)
-  io.in.w.ready := canW
+  
 
   /* ======== Send ======== */
   //when a entry is fire,send a put request to L3
