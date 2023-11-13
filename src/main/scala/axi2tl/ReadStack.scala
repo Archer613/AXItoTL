@@ -11,7 +11,6 @@ import xs.utils.mbist.MBISTPipeline
 import xs.utils.sram.SRAMTemplate
 import xs.utils.perf.HasPerfLogging
 
-
 class readEntry(implicit p: Parameters) extends AXItoTLBundle {
   val rvalid = Bool()
   val rready = Bool()
@@ -25,6 +24,7 @@ class readEntry(implicit p: Parameters) extends AXItoTLBundle {
   val BeatFifoId = UInt(axi2tlParams.rbufIdBits.W)
   val RespFifoId = UInt(axi2tlParams.rbufIdBits.W)
   val sourceId = UInt(sourceBits.W)
+  val real_last = Bool()
 }
 
 class RSBlock(implicit p: Parameters) extends AXItoTLBundle {
@@ -32,8 +32,7 @@ class RSBlock(implicit p: Parameters) extends AXItoTLBundle {
 }
 
 /* ======== diplomacy ======== */
-class ReadStack(entries: Int = 8
-               )(implicit p: Parameters) extends AXItoTLModule with HasPerfLogging {
+class ReadStack(entries: Int = 8)(implicit p: Parameters) extends AXItoTLModule with HasPerfLogging {
   val io = IO(new Bundle() {
     val in = new Bundle() {
       val ar = Flipped(
@@ -51,16 +50,19 @@ class ReadStack(entries: Int = 8
     }
     val out = new Bundle() {
       val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
-      val d = Flipped(DecoupledIO(new TLBundleD(
-        edgeOut.bundle
-      )))
+      val d = Flipped(
+        DecoupledIO(
+          new TLBundleD(
+            edgeOut.bundle
+          )
+        )
+      )
     }
   })
 
   def mask(address: UInt, lgSize: UInt): UInt = {
     MaskGen(address, lgSize, beatBytes)
   }
-
 
   def countBeat(arId: UInt, rs: Vec[readEntry]): UInt = {
     rs.count(e => e.rvalid && e.arid === arId)
@@ -72,27 +74,28 @@ class ReadStack(entries: Int = 8
        readDataStack : store r_data
    */
   val readStack = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new readEntry))))
-  val readDataStack = Module(new SRAMTemplate(
-    gen = new RSBlock,
-    set = entries,
-    way = 1,
-    singlePort = true,
-    hasMbist = p(AXI2TLParamKey).hasMbist,
-    hasShareBus = p(AXI2TLParamKey).hasShareBus,
-    parentName = "axi2tl_read_"
-  ))
-  val mbistPipeline = MBISTPipeline.PlaceMbistPipeline(1,
-    s"MBIST_AXI2TL_R_", p(AXI2TLParamKey).hasMbist && p(AXI2TLParamKey).hasShareBus)
+  val readDataStack = Module(
+    new SRAMTemplate(
+      gen = new RSBlock,
+      set = entries,
+      way = 1,
+      singlePort = true,
+      hasMbist = p(AXI2TLParamKey).hasMbist,
+      hasShareBus = p(AXI2TLParamKey).hasShareBus,
+      parentName = "axi2tl_read_"
+    )
+  )
+  val mbistPipeline =
+    MBISTPipeline.PlaceMbistPipeline(1, s"MBIST_AXI2TL_R_", p(AXI2TLParamKey).hasMbist && p(AXI2TLParamKey).hasShareBus)
   val idel :: waitSend :: waitResp :: waitSendResp :: done :: Nil = Enum(5)
   val axireqArb = Module(new Arbiter(new readEntry, entries))
   val axirespArb = Module(new Arbiter(new readEntry, entries))
-
 
   /* ======== Receive Ar Req and Alloc======== */
   /*
     when ar is fire and readStack is not full,
     alloc a entry in readStack and readDataStack.
-  */
+   */
   val empty = Cat(readStack.map(e => !e.rvalid && e.readStatus === idel)).orR
   val alloc = empty && io.in.ar.valid
 
@@ -109,19 +112,18 @@ class ReadStack(entries: Int = 8
     entry.readStatus := 1.U
     entry.rsize := r_size
     entry.sourceId := Cat(1.asUInt, idxInsert, io.in.ar.bits.id)
+    entry.real_last := io.in.ar.bits.echo(AXI4FragLast)
     assert((r_size <= log2Ceil(tlDataBits / 8).asUInt && alloc) || !alloc, "AXItoTL : rsize is too long")
   }
-
 
   /* ======== Issue  Get Req ======== */
   /*
       Send a get request to get the data,
       Send sequence is fifo
-  */
+   */
   val hasWaitTLReq = Cat(readStack.map(_.readStatus === waitSend)).orR
-  axireqArb.io.in zip readStack foreach {
+  axireqArb.io.in.zip(readStack).foreach {
     case (in, e) =>
-
       in.valid := e.rvalid && (e.readStatus === waitSend) && (e.entryFifoId === 0.U)
       in.bits := e
   }
@@ -137,15 +139,18 @@ class ReadStack(entries: Int = 8
   io.out.a.bits.corrupt := false.B
   axireqArb.io.out.ready := io.out.a.ready
 
-
   /* ======== Receive  D Resp ======== */
   /*
       receive D Resp,store data in Sram
-  */
+   */
   val canReceive = Cat(readStack.map(e => e.rvalid && e.readStatus === waitResp)).orR
   io.out.d.ready := canReceive
   //status update shouble be delay one cycle for waiting data write in STAM
-  val d_hasData = Mux(io.out.d.bits.opcode === TLMessages.AccessAckData || io.out.d.bits.opcode === TLMessages.GrantData, true.B, false.B)
+  val d_hasData = Mux(
+    io.out.d.bits.opcode === TLMessages.AccessAckData || io.out.d.bits.opcode === TLMessages.GrantData,
+    true.B,
+    false.B
+  )
   val d_valid = io.out.d.fire && d_hasData
   //control sram read and write
   val wen = d_valid
@@ -155,9 +160,18 @@ class ReadStack(entries: Int = 8
     val respEntryId = respTLId(axiIdBits + axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt
     // val respEntryId = respTLId( axi2tlParams.rbufIdBits - 1, 0).asUInt
     val entryResp = readStack(respEntryId)
-    entryResp.respStatus := Mux(io.out.d.bits.denied || io.out.d.bits.corrupt, AXI4Parameters.RESP_SLVERR, AXI4Parameters.RESP_OKAY)
+    entryResp.respStatus := Mux(
+      io.out.d.bits.denied || io.out.d.bits.corrupt,
+      AXI4Parameters.RESP_SLVERR,
+      AXI4Parameters.RESP_OKAY
+    )
   }
-  readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source(axiIdBits + axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt, 1.U)
+  readDataStack.io.w.apply(
+    wen,
+    io.out.d.bits.data.asTypeOf(new RSBlock),
+    io.out.d.bits.source(axiIdBits + axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt,
+    1.U
+  )
   // readDataStack.io.w.apply(wen, io.out.d.bits.data.asTypeOf(new RSBlock), io.out.d.bits.source( axi2tlParams.rbufIdBits - 1, 0).asUInt, 1.U)
   val dataWillWrite = RegNext(d_valid, false.B)
   val respIdx = RegNext(io.out.d.bits.source(axiIdBits + axi2tlParams.rbufIdBits - 1, axiIdBits).asUInt, 0.U)
@@ -172,7 +186,7 @@ class ReadStack(entries: Int = 8
   /*
       chosen a fire entry , return R Resp
       Beat with the same ID cannot be interleaved. Beat with different ids can be interleaved
-  */
+   */
   val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U))
 
   val proVec = priority.zip(readStack).map {
@@ -190,7 +204,7 @@ class ReadStack(entries: Int = 8
   val max_priority_fifoid_1_valid = RegNext(max_priority_fifoid_valid)
   val max_priority_fifoid_1 = RegNext(max_priority_fifoid)
 
-  axirespArb.io.in zip readStack foreach {
+  axirespArb.io.in.zip(readStack).foreach {
     case (in, e) =>
       in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid_1 && e.rready) && max_priority_fifoid_1_valid
       in.bits := e
@@ -217,15 +231,15 @@ class ReadStack(entries: Int = 8
   io.in.r.bits.id := resp_entry.arid
   io.in.r.bits.resp := resp_entry.respStatus
   io.in.r.bits.last := true.B
+  io.in.r.bits.echo(AXI4FragLast) := resp_entry.real_last
   axirespArb.io.out.ready := io.in.r.ready
 
-  //block axirespArb waiting for data to be reading 
+  //block axirespArb waiting for data to be reading
   when(ren) {
     bloackReadData := true.B
   }.elsewhen(io.in.r.fire) {
     bloackReadData := false.B
   }
-
 
   /* ======== Update ReadStatus and Fifoid ======== */
 
@@ -290,5 +304,3 @@ class ReadStack(entries: Int = 8
     XSPerfAccumulate("readStack_send_r_resp", io.in.r.fire)
   }
 }
-
-

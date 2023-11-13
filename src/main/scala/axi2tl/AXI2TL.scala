@@ -49,7 +49,7 @@ case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit
           )
       }
       ,
-      echoFields    = mp.echoFields,
+      // echoFields    = mp.echoFields,
       requestFields = AMBAProtField() +: mp.requestFields,
       responseKeys  = mp.responseKeys
       )
