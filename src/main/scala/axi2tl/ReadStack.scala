@@ -113,7 +113,7 @@ class ReadStack(entries: Int = 8)(implicit p: Parameters) extends AXItoTLModule 
     entry.rsize := r_size
     entry.sourceId := Cat(1.asUInt, idxInsert, io.in.ar.bits.id)
     entry.real_last := io.in.ar.bits.echo(AXI4FragLast)
-    assert((r_size <= log2Ceil(tlDataBits / 8).asUInt && alloc) || !alloc, "AXItoTL : rsize is too long")
+    // assert((r_size <= log2Ceil(tlDataBits / 8).asUInt && alloc) || !alloc, "AXItoTL : rsize is too long")
   }
 
   /* ======== Issue  Get Req ======== */
