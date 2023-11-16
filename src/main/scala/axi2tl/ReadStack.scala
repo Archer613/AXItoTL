@@ -89,7 +89,7 @@ class ReadStack(entries: Int = 8)(implicit p: Parameters) extends AXItoTLModule 
     MBISTPipeline.PlaceMbistPipeline(1, s"MBIST_AXI2TL_R_", p(AXI2TLParamKey).hasMbist && p(AXI2TLParamKey).hasShareBus)
   val idel :: waitSend :: waitResp :: waitSendResp :: done :: Nil = Enum(5)
   val axireqArb = Module(new Arbiter(new readEntry, entries))
-  val axirespArb = Module(new Arbiter(new readEntry, entries))
+  val axirespArb = Module(new RRArbiter(new readEntry, entries))
 
   /* ======== Receive Ar Req and Alloc======== */
   /*
@@ -187,31 +187,34 @@ class ReadStack(entries: Int = 8)(implicit p: Parameters) extends AXItoTLModule 
       chosen a fire entry , return R Resp
       Beat with the same ID cannot be interleaved. Beat with different ids can be interleaved
    */
-  val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U))
+  // val priority = VecInit(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U))
 
-  val proVec = priority.zip(readStack).map {
-    case (valid, e) =>
-      Mux(valid, e.RespFifoId, entries.U)
-  }
-  val priority_valid = Cat(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U)).orR
+  // val proVec = priority.zip(readStack).map {
+  //   case (valid, e) =>
+  //     Mux(valid, e.RespFifoId, entries.U)
+  // }
+  // val priority_valid = Cat(readStack.map(e => e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U)).orR
 
-  val proVec_1 = RegNext(VecInit(proVec))
-  val priority_valid_1 = RegNext(priority_valid, false.B)
+  // val proVec_1 = RegNext(VecInit(proVec))
+  // val priority_valid_1 = RegNext(priority_valid, false.B)
 
-  val max_priority_fifoid_valid = priority_valid_1
-  val max_priority_fifoid = proVec_1.reduceLeft(_ min _)
+  // val max_priority_fifoid_valid = priority_valid_1
+  // val max_priority_fifoid = proVec_1.reduceLeft(_ min _)
 
-  val max_priority_fifoid_1_valid = RegNext(max_priority_fifoid_valid)
-  val max_priority_fifoid_1 = RegNext(max_priority_fifoid)
+  // val max_priority_fifoid_1_valid = RegNext(max_priority_fifoid_valid)
+  // val max_priority_fifoid_1 = RegNext(max_priority_fifoid)
 
   axirespArb.io.in.zip(readStack).foreach {
     case (in, e) =>
-      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid_1 && e.rready) && max_priority_fifoid_1_valid
+      // in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid_1 && e.rready) && max_priority_fifoid_1_valid
+      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U  && e.rready) 
       in.bits := e
   }
 
   val bloackReadData = RegInit(false.B)
-  val ren = axirespArb.io.out.valid && !wen && !bloackReadData && max_priority_fifoid_1_valid
+  // val ren = axirespArb.io.out.valid && !wen && !bloackReadData && max_priority_fifoid_1_valid
+  val ren = axirespArb.io.out.valid && !wen && !bloackReadData 
+
   val chosenResp = axirespArb.io.chosen
   val chosenResp1 = RegEnable(chosenResp, ren)
   //need delay one cycle to wait reading data
