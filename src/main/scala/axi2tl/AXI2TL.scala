@@ -91,7 +91,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean)(impli
 
     private val params = AXI2TLParam(wbufSize = wbufSize, rbufSize = rbufSize, hasShareBus = sharebus, hasMbist = mbist)
 
-    private val writeStack = Module(new WriteStack(wbufSize)(p.alterPartial {
+    private val writeStack = Module(new NewWriteStack(wbufSize)(p.alterPartial {
       case AXI2TLParamKey => params
       case EdgeInKey => edgeIn
       case EdgeOutKey => edgeOut

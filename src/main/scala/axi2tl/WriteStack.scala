@@ -22,7 +22,7 @@ class writeEntry(implicit p: Parameters) extends AXItoTLBundle {
   val entryFifoid = UInt(axi2tlParams.wbufIdBits.W)
   val waitWFifoId = UInt(axi2tlParams.wbufIdBits.W)
   val wsize = UInt(tlSizeBits.W)
-  val count = UInt(axi2tlParams.wbufIdBits.W)
+  val count = UInt(axiLenBits.W)
   val d_resp = UInt(2.W)
   val size = UInt(axiSizeBits.W)
   val len = UInt(axiLenBits.W)
@@ -50,6 +50,138 @@ object WSBlock {
 }
 
 /* ======== diplomacy ======== */
+class NewWriteStack(
+  entries: Int = 8
+)(
+  implicit p: Parameters)
+    extends AXItoTLModule
+    with HasPerfLogging {
+
+    val io = IO(new Bundle() {
+        val in = new Bundle() {
+          val aw = Flipped(
+            DecoupledIO(
+              new AXI4BundleAW(
+                edgeIn.bundle
+              )
+            )
+          )
+          val w = Flipped(
+            DecoupledIO(
+              new AXI4BundleW(
+                edgeIn.bundle
+              )
+            )
+          )
+          val b = DecoupledIO(
+            new AXI4BundleB(
+              edgeIn.bundle
+            )
+          )
+        }
+        val out = new Bundle() {
+          val a = DecoupledIO(new TLBundleA(edgeOut.bundle))
+          val d = Flipped(
+            DecoupledIO(
+              new TLBundleD(
+                edgeOut.bundle
+              )
+            )
+          )
+        }
+  })
+
+     /*
+     Data Structure:
+       readStack: store  contrl imformation
+       readDataStack : store r_data
+   */
+    val writeStack = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new writeEntry))))
+    val mbistPipeline =
+    MBISTPipeline.PlaceMbistPipeline(1, s"MBIST_AXI2TL_W_", p(AXI2TLParamKey).hasMbist && p(AXI2TLParamKey).hasShareBus)
+    val idel :: waitW :: sendPut :: waitDResp :: sendB :: Nil = Enum(5)
+
+     /*
+    when aw is fire and readStack is not full,
+    alloc a entry in readStack and readDataStack.
+   */
+    val full = Cat(writeStack.map(_.wvalid)).andR
+    val hasWaitW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW)).orR
+    val alloc = !full && !hasWaitW 
+    val idxInsert = Mux(alloc, PriorityEncoder(writeStack.map(!_.wvalid)), 0.U)
+    io.in.aw.ready := !full && !hasWaitW
+    when(alloc && io.in.aw.fire) {
+      val entry = writeStack(idxInsert)
+      entry.wvalid := true.B
+      entry.waddr := io.in.aw.bits.addr
+      entry.wstatus := waitW
+      entry.wsize := OH1ToUInt(io.in.aw.bits.bytes1().asUInt)
+      entry.size := io.in.aw.bits.size
+      entry.len := io.in.aw.bits.len
+      entry.awid := io.in.aw.bits.id
+      entry.entryid := idxInsert
+      entry.real_last := io.in.aw.bits.echo(AXI4FragLast)
+      entry.count := 0.U
+  }
+    /* ======== Receive W Req ======== */
+  /*
+        Since the W channel in AXI4 does not use wid,
+        each time an AW task is accepted, it must wait for a w task.
+        data and mask will be stored in Sram
+   */
+  val lastWFire = io.in.w.fire && io.in.w.bits.last
+  val canW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW && RegNext(!lastWFire,false.B) )).orR
+  io.in.w.ready := canW && io.out.a.ready
+  val wsbIdx =dontTouch(WireInit(0.U))
+  writeStack.foreach { e =>
+    when(e.wvalid && e.wstatus === waitW ) {
+      wsbIdx := e.entryid
+    }
+  }
+   /* ======== transfer w into a ======== */
+   io.out.a.valid := io.in.w.fire
+   io.out.a.bits.opcode := TLMessages.PutPartialData
+   io.out.a.bits.param := 0.U
+   io.out.a.bits.size := writeStack(wsbIdx).wsize
+   io.out.a.bits.source :=  Cat(0.asUInt, writeStack(wsbIdx).entryid, writeStack(wsbIdx).awid)
+   io.out.a.bits.address := writeStack(wsbIdx).waddr
+   io.out.a.bits.mask := io.in.w.bits.strb
+   io.out.a.bits.data := io.in.w.bits.data
+   io.out.a.bits.corrupt := false.B
+
+
+   /* ======== when w is last fire , update w status ======== */
+  when(io.in.w.fire && io.in.w.bits.last)
+      {
+        writeStack(wsbIdx).wstatus := waitDResp
+      }
+
+   /* ======== Receive d resp and Send b resp ======== */
+   val canRecD = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitDResp)).orR
+   io.out.d.ready := canRecD && io.in.b.ready
+   val sourceD = io.out.d.bits.source
+   val respIdx = sourceD(axiIdBits + axi2tlParams.wbufIdBits - 1, axiIdBits).asUInt
+   val isLastD = writeStack(respIdx).count === writeStack(respIdx).len
+   io.in.b.bits.id := writeStack(respIdx).awid
+   io.in.b.bits.resp := Mux(
+      io.out.d.bits.denied || io.out.d.bits.corrupt,
+      AXI4Parameters.RESP_SLVERR,
+      AXI4Parameters.RESP_OKAY
+    )
+   io.in.b.bits.echo(AXI4FragLast) := writeStack(respIdx).real_last
+   io.in.b.valid := io.out.d.fire
+ /* ========  update w status ======== */ 
+//  when(io.in.b.fire)
+//       {
+//            writeStack(respIdx).count :=  writeStack(respIdx).count + 1.U
+//       }
+ when(io.in.b.fire )
+      {
+        writeStack(respIdx).wstatus := idel
+        writeStack(respIdx).wvalid := false.B
+      }
+
+}
 class WriteStack(
   entries: Int = 8
 )(
