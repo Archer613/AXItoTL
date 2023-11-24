@@ -1,7 +1,8 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.axi4
+package axi2tl
 
+import freechips.rocketchip.amba.axi4._
 import chisel3._
 import chisel3.util._
 import org.chipsalliance.cde.config.Parameters
