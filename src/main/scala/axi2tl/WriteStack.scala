@@ -97,8 +97,6 @@ class NewWriteStack(
        readDataStack : store r_data
    */
     val writeStack = RegInit(VecInit(Seq.fill(entries)(0.U.asTypeOf(new writeEntry))))
-    val mbistPipeline =
-    MBISTPipeline.PlaceMbistPipeline(1, s"MBIST_AXI2TL_W_", p(AXI2TLParamKey).hasMbist && p(AXI2TLParamKey).hasShareBus)
     val idel :: waitW :: sendPut :: waitDResp :: sendB :: Nil = Enum(5)
 
      /*
@@ -107,7 +105,7 @@ class NewWriteStack(
    */
     val full = Cat(writeStack.map(_.wvalid)).andR
     val hasWaitW = Cat(writeStack.map(e => e.wvalid && e.wstatus === waitW)).orR
-    val alloc = !full && !hasWaitW 
+    val alloc = !full && !hasWaitW
     val idxInsert = Mux(alloc, PriorityEncoder(writeStack.map(!_.wvalid)), 0.U)
     io.in.aw.ready := !full && !hasWaitW
     when(alloc && io.in.aw.fire) {
