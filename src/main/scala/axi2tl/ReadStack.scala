@@ -32,7 +32,7 @@ class RSBlock(implicit p: Parameters) extends AXItoTLBundle {
 }
 
 /* ======== diplomacy ======== */
-class ReadStack(entries: Int = 8,enable_read_interleave:Boolean = true)(implicit p: Parameters) extends AXItoTLModule with HasPerfLogging {
+class ReadStack(entries: Int = 8,enable_read_interleave:Boolean = false)(implicit p: Parameters) extends AXItoTLModule with HasPerfLogging {
   val io = IO(new Bundle() {
     val in = new Bundle() {
       val ar = Flipped(

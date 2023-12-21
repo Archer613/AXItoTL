@@ -170,7 +170,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable
 }
 object AXI2TL
 {
-  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, sharebus:Boolean = false,enable_read_interleave:Boolean = true)(implicit p: Parameters): MyAXI4ToTLNode = {
+  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, sharebus:Boolean = false,enable_read_interleave:Boolean = false)(implicit p: Parameters): MyAXI4ToTLNode = {
     val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize, mbist, sharebus,enable_read_interleave))
     axi2tl.node
   }
