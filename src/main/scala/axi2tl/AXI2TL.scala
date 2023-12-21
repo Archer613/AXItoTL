@@ -38,7 +38,7 @@ trait HasAXI2TLParameters {
 }
 
 
-case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit valName: ValName) extends MixedAdapterNode(AXI4Imp, TLImp)(
+case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int,enable_read_interleave:Boolean)(implicit valName: ValName) extends MixedAdapterNode(AXI4Imp, TLImp)(
   dFn = {  mp => TLMasterPortParameters.v1(
       clients = mp.masters.map{m =>
           TLMasterParameters.v1(
@@ -73,9 +73,9 @@ case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int)(implicit
   })
 
 
-class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean)(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
+class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable_read_interleave:Boolean )(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
   
-  val node = MyAXI4ToTLNode(false,wbufSize,rbufSize)
+  val node = MyAXI4ToTLNode(false,wbufSize,rbufSize,enable_read_interleave)
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
@@ -96,7 +96,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean)(impli
       case EdgeInKey => edgeIn
       case EdgeOutKey => edgeOut
     }))
-    private val readStack = Module(new ReadStack(rbufSize)(p.alterPartial {
+    private val readStack = Module(new ReadStack(rbufSize,enable_read_interleave)(p.alterPartial {
       case AXI2TLParamKey => params
       case EdgeInKey => edgeIn
       case EdgeOutKey => edgeOut
@@ -170,8 +170,8 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean)(impli
 }
 object AXI2TL
 {
-  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, sharebus:Boolean = false)(implicit p: Parameters): MyAXI4ToTLNode = {
-    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize, mbist, sharebus))
+  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, sharebus:Boolean = false,enable_read_interleave:Boolean = true)(implicit p: Parameters): MyAXI4ToTLNode = {
+    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize, mbist, sharebus,enable_read_interleave))
     axi2tl.node
   }
 }

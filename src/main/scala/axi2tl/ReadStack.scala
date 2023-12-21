@@ -32,7 +32,7 @@ class RSBlock(implicit p: Parameters) extends AXItoTLBundle {
 }
 
 /* ======== diplomacy ======== */
-class ReadStack(entries: Int = 8)(implicit p: Parameters) extends AXItoTLModule with HasPerfLogging {
+class ReadStack(entries: Int = 8,enable_read_interleave:Boolean = true)(implicit p: Parameters) extends AXItoTLModule with HasPerfLogging {
   val io = IO(new Bundle() {
     val in = new Bundle() {
       val ar = Flipped(
@@ -207,7 +207,7 @@ class ReadStack(entries: Int = 8)(implicit p: Parameters) extends AXItoTLModule 
   axirespArb.io.in.zip(readStack).foreach {
     case (in, e) =>
       // in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U && e.RespFifoId === max_priority_fifoid_1 && e.rready) && max_priority_fifoid_1_valid
-      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U  && e.rready) 
+      in.valid := (e.readStatus === waitSendResp && e.rvalid && e.BeatFifoId === 0.U  && e.rready && enable_read_interleave.B) || (e.readStatus === waitSendResp && e.rvalid && !enable_read_interleave.B && e.RespFifoId === 0.U )
       in.bits := e
   }
 
