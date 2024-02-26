@@ -6,7 +6,7 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.tilelink._
 import org.chipsalliance.cde.config.Field
 import freechips.rocketchip.amba.axi4._
-import chisel3.internal.sourceinfo.SourceInfo
+import chisel3.experimental.SourceInfo
 import freechips.rocketchip.util._
 import freechips.rocketchip.diplomacy.BufferParams
 // General parameter key of AXI2TL
