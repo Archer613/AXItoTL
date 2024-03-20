@@ -119,36 +119,36 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable
     writeStack.io.in.b <> node.in.head._1.b
 
     // TL A OUT
-    writeStackQ.io.enq <> writeStack.io.out.a
     val outTlBuf = axi2tlParams.outerTLBuf
-    // Remove Interweave logic
-    if (!axi2tlParams.enableInterweave) {
-      val trans_brust = RegInit(false.B)
-      when(arbiter.io.out.fire && writeStackQ.io.deq.fire) {
-        val (first, last, done, count) = edgeOut.count(arbiter.io.out)
-        when(first && !last) {
-          trans_brust := true.B
-        }
-        when(last) {
-          trans_brust := false.B
-        }
-        if (axi2tlParams.enableAssert) {
-          assert(!(trans_brust && first), "In burst transaction, no beats from other messages may be interleaved between")
-        }
-      }
-      val read_out_temp = WireInit(0.U.asTypeOf(readStack.io.out.a))
-      read_out_temp <> readStack.io.out.a
-      readStack.io.out.a.ready := read_out_temp.ready && !trans_brust
-      read_out_temp.valid := readStack.io.out.a.valid && !trans_brust
-      readStackQ.io.enq <> outTlBuf.a(read_out_temp)
-    } else {
-      readStackQ.io.enq <> outTlBuf.a(readStack.io.out.a)
-    }
-
+    readStackQ.io.enq <> outTlBuf.a(readStack.io.out.a)
+    writeStackQ.io.enq <> writeStack.io.out.a
+    
     // TL A Arbier
     arbiter.io.in(0) <> writeStackQ.io.deq
-    arbiter.io.in(1) <> readStackQ.io.deq
     node.out.head._1.a <> arbiter.io.out
+    // Remove Interweave logic
+    if (!axi2tlParams.enableInterweave) {
+      val write_brust = RegInit(false.B)
+      val (first, last, done, count) = edgeOut.count(arbiter.io.out)
+      when(arbiter.io.out.fire && writeStackQ.io.deq.fire) {
+        when(first && !last) {
+          write_brust := true.B
+        }
+        when(last) {
+          write_brust := false.B
+        }
+      }
+      if (axi2tlParams.enableAssert) {
+        assert(!(write_brust && first), "In burst transaction, no beats from other messages may be interleaved between")
+      }
+      val read_out_temp = WireInit(0.U.asTypeOf(readStackQ.io.deq))
+      read_out_temp <> readStackQ.io.deq
+      readStackQ.io.deq.ready := read_out_temp.ready && !write_brust
+      read_out_temp.valid := readStackQ.io.deq.valid && !write_brust
+      arbiter.io.in(1) <> read_out_temp
+    } else {
+      arbiter.io.in(1) <> readStackQ.io.deq
+    }
 
 
 
