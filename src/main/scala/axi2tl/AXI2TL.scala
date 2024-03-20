@@ -109,34 +109,42 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable
     val arbiter = Module(new RRArbiterInit(new TLBundleA(node.out.head._2.bundle), 2))
     val mbistPipeline = MBISTPipeline.PlaceMbistPipeline(3,
       s"MBIST_AXI2TL_TOP_", sharebus & mbist)
-    // AXI in
-    // readStack.io.in <> node.in.head._1
-    // writeStack.io.in <> node.in.head._1
+    // AXI AR IN
     val innerAxiBuf = axi2tlParams.innerAXI4Buf
     innerAxiBuf.ar(readStack.io.in.ar) <> node.in.head._1.ar
     readStack.io.in.r <> node.in.head._1.r
-
+    // AXI AW & W IN
     innerAxiBuf.aw(writeStack.io.in.aw) <> node.in.head._1.aw
     innerAxiBuf.w(writeStack.io.in.w) <> node.in.head._1.w
     writeStack.io.in.b <> node.in.head._1.b
-//    readStack.io.in.ar <> node.in.head._1.ar
-//    readStack.io.in.r <> node.in.head._1.r
-//
-//    writeStack.io.in.aw <> node.in.head._1.aw
-//    writeStack.io.in.w <> node.in.head._1.w
-//    writeStack.io.in.b <> node.in.head._1.b
-    // TL out
-    // arbiter.io.in(0) <> readStack.io.out.a
-    // arbiter.io.in(1) <> writeStack.io.out.a
+
+    // TL A OUT
     val outTlBuf = axi2tlParams.outerTLBuf
     readStackQ.io.enq <> outTlBuf.a(readStack.io.out.a)
     writeStackQ.io.enq <> writeStack.io.out.a
+
+    // TL A Arbier
     arbiter.io.in(0) <> readStackQ.io.deq
     arbiter.io.in(1) <> writeStackQ.io.deq
     node.out.head._1.a <> arbiter.io.out
 
+    // Assert
+    if (axi2tlParams.enableAssert && !axi2tlParams.enableInterweave) {
+      when(arbiter.io.out.fire) {
+        val (first, last, done, count) = edgeOut.count(arbiter.io.out)
+        val trans_brust = RegInit(false.B)
+        when(first & !last) {
+          trans_brust := true.B
+        }
+        when(last) {
+          trans_brust := false.B
+        }
+        assert(!(trans_brust && first), "In burst transaction, no beats from other messages may be interleaved between. ")
+      }
+    }
+
+
     val out = node.out.head._1
-   
 
     // val d_hasData = node.out.head._2.hasData(out.d.bits)
     val d_hasData = Mux(out.d.bits.opcode === TLMessages.AccessAckData || out.d.bits.opcode === TLMessages.GrantData  ,true.B,false.B)

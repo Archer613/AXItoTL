@@ -19,6 +19,8 @@ case class AXI2TLParam(
   wbufSize:Int =16,
   // Performance analysis
   enablePerf: Boolean = false,
+  enableAssert: Boolean = true,
+  enableInterweave: Boolean = false,
   rbufSize:Int = 16,
   hasMbist:Boolean = false,
   hasShareBus:Boolean = false,
