@@ -73,7 +73,7 @@ class TestDMA()(implicit p: Parameters) extends LazyModule {
 
 
   val axi2tlParams = p(AXI2TLParamKey)
-  val AXItoTL = LazyModule(new AXItoTL(16,16,false,false))
+  val AXItoTL = LazyModule(new AXItoTL(16,16,false,false,false))
     // TLFIFOFixer() :=
 
     tlnode :=
