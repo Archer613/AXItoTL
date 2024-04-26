@@ -80,6 +80,7 @@ class ReadStack(entries: Int = 8,enable_read_interleave:Boolean = false)(implici
       set = entries,
       way = 1,
       singlePort = true,
+      holdRead = true,
       hasMbist = p(AXI2TLParamKey).hasMbist,
       hasShareBus = p(AXI2TLParamKey).hasShareBus,
       parentName = "axi2tl_read_"
