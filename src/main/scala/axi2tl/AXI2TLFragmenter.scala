@@ -252,10 +252,16 @@ class AXI2TLFragmenter()(implicit p: Parameters) extends LazyModule
 
       // We need to inject 'last' into the W channel fragments, count!
       val w_counter = RegInit(0.U((AXI4Parameters.lenBits+1).W))
+      val w_recv_counter = RegInit(0.U((AXI4Parameters.lenBits+1).W))
+      val recv_w_beats = RegInit(0.U((AXI4Parameters.lenBits+1).W))
       val w_idle = w_counter === 0.U
+
       val w_todo = Mux(w_idle, Mux(wbeats_valid, w_beats, 0.U), w_counter)
       val w_last = w_todo === 1.U
+
       w_counter := w_todo - out.w.fire
+      w_recv_counter := Mux(w_idle, 0.U, w_recv_counter + 1.U)
+      recv_w_beats := Mux(w_idle, Mux(wbeats_valid, w_beats, 0.U), recv_w_beats)
       assert (!out.w.fire || w_todo =/= 0.U) // underflow impossible
 
       // W flow control
@@ -266,6 +272,8 @@ class AXI2TLFragmenter()(implicit p: Parameters) extends LazyModule
       out.w.bits.last := w_last
       // We should also recreate the last last
       assert (!out.w.valid || !in_w.bits.last || w_last)
+      //we need receive (len+1) beat
+      assert (!(out.w.valid && w_last && w_recv_counter =/= recv_w_beats ))
 
       // R flow control
       val r_last = out.r.bits.echo(AXI4FragLast)
