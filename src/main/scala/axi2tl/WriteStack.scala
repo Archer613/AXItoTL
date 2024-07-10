@@ -6,9 +6,6 @@ import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Parameters
-import xs.utils.sram.SRAMTemplate
-import xs.utils.RegNextN
-import xs.utils.mbist.MBISTPipeline
 import xs.utils.perf.HasPerfLogging
 
 class writeEntry(implicit p: Parameters) extends AXItoTLBundle {

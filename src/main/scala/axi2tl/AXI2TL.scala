@@ -11,7 +11,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import freechips.rocketchip.amba.axi4._
 import chisel3.util._
-import xs.utils.mbist.MBISTPipeline
+import xs.utils.mbist.MbistPipeline
 import xs.utils.RRArbiterInit
 
 trait HasAXI2TLParameters {
@@ -73,7 +73,7 @@ case class MyAXI4ToTLNode(wcorrupt: Boolean,wbufSize:Int, rbufSize:Int,enable_re
   })
 
 
-class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable_read_interleave:Boolean )(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
+class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, enable_read_interleave:Boolean )(implicit p: Parameters) extends LazyModule with HasAXI2TLParameters {
   
   val node = MyAXI4ToTLNode(false,wbufSize,rbufSize,enable_read_interleave)
 
@@ -89,7 +89,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable
     println(s"AXI side:\n\tAddr Width:${axiSideParam.addrBits}\n\tData Width:${axiSideParam.dataBits}\n\tID Width:${axiSideParam.idBits}\n")
     println(s"TL side:\n\tAddr Width:${tlSideParam.addressBits}\n\tData Width:${tlSideParam.dataBits}\n\tSource Width:${tlSideParam.sourceBits}\n")
 
-    private val params = AXI2TLParam(wbufSize = wbufSize, rbufSize = rbufSize, hasShareBus = sharebus, hasMbist = mbist)
+    private val params = AXI2TLParam(wbufSize = wbufSize, rbufSize = rbufSize, hasMbist = mbist)
 
     private val writeStack = Module(new NewWriteStack(wbufSize)(p.alterPartial {
       case AXI2TLParamKey => params
@@ -107,8 +107,7 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable
     val readStackQ  = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
     val writeStackQ = Module(new Queue(new TLBundleA(node.out.head._2.bundle), entries, flow = false, pipe = false))
     val arbiter = Module(new RRArbiterInit(new TLBundleA(node.out.head._2.bundle), 2))
-    val mbistPipeline = MBISTPipeline.PlaceMbistPipeline(3,
-      s"MBIST_AXI2TL_TOP_", sharebus & mbist)
+    val mbistPipeline = MbistPipeline.PlaceMbistPipeline(3, place = mbist)
     // AXI AR IN
     val innerAxiBuf = axi2tlParams.innerAXI4Buf
     innerAxiBuf.ar(readStack.io.in.ar) <> node.in.head._1.ar
@@ -187,8 +186,8 @@ class AXItoTL(wbufSize:Int, rbufSize:Int, mbist:Boolean, sharebus:Boolean,enable
 }
 object AXI2TL
 {
-  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, sharebus:Boolean = false,enable_read_interleave:Boolean = false)(implicit p: Parameters): MyAXI4ToTLNode = {
-    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize, mbist, sharebus,enable_read_interleave))
+  def apply(wbufSize:Int, rbufSize:Int, mbist:Boolean = false, enable_read_interleave:Boolean = false)(implicit p: Parameters): MyAXI4ToTLNode = {
+    val axi2tl = LazyModule(new AXItoTL(wbufSize,rbufSize, mbist, enable_read_interleave))
     axi2tl.node
   }
 }

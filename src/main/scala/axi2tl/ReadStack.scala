@@ -7,7 +7,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.util.MaskGen
-import xs.utils.mbist.MBISTPipeline
+import xs.utils.mbist.MbistPipeline
 import xs.utils.sram.SRAMTemplate
 import xs.utils.perf.HasPerfLogging
 
@@ -81,13 +81,10 @@ class ReadStack(entries: Int = 8,enable_read_interleave:Boolean = false)(implici
       way = 1,
       singlePort = true,
       holdRead = true,
-      hasMbist = p(AXI2TLParamKey).hasMbist,
-      hasShareBus = p(AXI2TLParamKey).hasShareBus,
-      parentName = "axi2tl_read_"
+      hasMbist = p(AXI2TLParamKey).hasMbist
     )
   )
-  val mbistPipeline =
-    MBISTPipeline.PlaceMbistPipeline(1, s"MBIST_AXI2TL_R_", p(AXI2TLParamKey).hasMbist && p(AXI2TLParamKey).hasShareBus)
+  val mbistPipeline = MbistPipeline.PlaceMbistPipeline(1, place = p(AXI2TLParamKey).hasMbist)
   val idel :: waitSend :: waitResp :: waitSendResp :: done :: Nil = Enum(5)
   val axireqArb = Module(new Arbiter(new readEntry, entries))
   val axirespArb = Module(new RRArbiter(new readEntry, entries))
